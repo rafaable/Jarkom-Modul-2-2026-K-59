@@ -168,6 +168,7 @@ Cek gateway tiap-tiap node dengan:
 ```
 ip route
 ```
+
 Harus sesuai dengan IP Gateway masing masing, beres.
 ---
 
@@ -205,71 +206,71 @@ Alamat 10.93.x.x itu alamat privat, semacam nomor rumah di dalam kompleks tertut
    ```
    ping -c 3 8.8.8.8
    ```
-   Kalau ada reply, nomor 2 selesai. Ingat? ujinya pakai IP. `ping google.com` masih belum karena resolver belum diatur.
+   Kalau ada reply, nomor 2 selesai. Ingat? ujinya pakai IP. `ping google.com` masih belum karena resolver belum diatur
+   
    > Notes : Smpe sini semper error gabisa ping, wkwkwk
    > Troubleshootnya:
    > 1. Step 1 hapus dulu dari config, lalu restart
    > 2. Jalankan `bash /root/soal2.sh`
    > 3. Jalankan `iptables -t nat -L POSTROUTING -n -v`
    > 4. ping -c 3 8.8.8.8
-<br><img width="519" height="99" alt="image" src="https://github.com/user-attachments/assets/50c72ebf-5cbb-4276-aaf0-50cd30a19eec" /><br>
-Great, sekarang coba juga `ping -c 3 8.8.8.8` dari alpha
-<br><img width="574" height="188" alt="image" src="https://github.com/user-attachments/assets/151df8d2-4722-4efa-88f5-fcfd59e32740" /><br>  
-
-Sisa satu pekerjaan: membuat NAT ini aktif otomatis saat rootkit di-restart tanpa merusak proses boot seperti tadi
-<br>
-Langkah 1: Tulis ulang script /root/soal2.sh  
-Di console rootkit:
-```
-cat > /root/soal2.sh <<'EOF'
-#!/bin/bash
-# Pastikan program seperti iptables bisa ditemukan saat boot
-export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-
-# Izinkan rootkit meneruskan paket
-sysctl -w net.ipv4.ip_forward=1 || echo 1 > /proc/sys/net/ipv4/ip_forward
-
-# Tambah aturan NAT hanya kalau belum ada, supaya tidak dobel
-iptables -t nat -C POSTROUTING -s 10.93.0.0/16 -o eth0 -j MASQUERADE 2>/dev/null || \
-iptables -t nat -A POSTROUTING -s 10.93.0.0/16 -o eth0 -j MASQUERADE
-EOF
-chmod +x /root/soal2.sh
-```
-Tiga pengamannya:
-* export PATH=... memastikan iptables dan sysctl tetap ketemu walaupun proses boot memakai daftar folder yang terbatas.  
-* sysctl ... || echo ... artinya kalau cara pertama ditolak, coba cara kedua.
-* iptables -C ... || iptables -A ...   
-artinya cek dulu apakah aturannya sudah ada, dan tambahkan hanya kalau belum. Jadi kalau script jalan dua kali, aturannya tidak dobel  
-
-Langkah 2: Panggil script dari network config  
-Klik kanan rootkit → Edit network configuration, lalu ubah bagian eth0 saja menjadi:  
-```
-auto eth0
-iface eth0 inet dhcp
-    up /bin/bash /root/soal2.sh || true
-```
-Langkah 3: Stop lalu Start rootkit, tunggu sekitar 20 detik, lalu cek di rootkit:
-```
-ip a | grep inet
-cat /proc/sys/net/ipv4/ip_forward
-iptables -t nat -L POSTROUTING -n -v
-```
-Lalu di alpha:
-```
-ping -c 3 8.8.8.8
-```
-Hasil yang diharapkan:  
-* Semua interface punya IP.  
-* ip_forward bernilai 1.  
-* Ada satu baris MASQUERADE.  
-* Alpha bisa ping 8.8.8.8.
   
-<br><img width="704" height="368" alt="image" src="https://github.com/user-attachments/assets/54451ed9-2418-45ec-a996-8f8ad8bb3aed" /><br>
-<br><img width="571" height="183" alt="image" src="https://github.com/user-attachments/assets/4eeae2f1-46ac-46ea-abc7-a0f16404a5a8" /><br>
-Aman yaps.
+    <br><img width="519" height="99" alt="image" src="https://github.com/user-attachments/assets/50c72ebf-5cbb-4276-aaf0-50cd30a19eec" /><br>  
+    Great, sekarang coba juga `ping -c 3 8.8.8.8` dari alpha  
+    <br><img width="574" height="188" alt="image" src="https://github.com/user-attachments/assets/151df8d2-4722-4efa-88f5-fcfd59e32740" /><br>  
 
-
-
+    Sisa satu pekerjaan: membuat NAT ini aktif otomatis saat rootkit di-restart tanpa merusak proses boot seperti tadi
+    <br>
+   
+    Langkah 1: Tulis ulang script /root/soal2.sh  
+    Di console rootkit:
+    ```
+    cat > /root/soal2.sh <<'EOF'
+    #!/bin/bash
+    # Pastikan program seperti iptables bisa ditemukan saat boot
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    
+    # Izinkan rootkit meneruskan paket
+    sysctl -w net.ipv4.ip_forward=1 || echo 1 > /proc/sys/net/ipv4/ip_forward
+    
+    # Tambah aturan NAT hanya kalau belum ada, supaya tidak dobel
+    iptables -t nat -C POSTROUTING -s 10.93.0.0/16 -o eth0 -j MASQUERADE 2>/dev/null || \
+    iptables -t nat -A POSTROUTING -s 10.93.0.0/16 -o eth0 -j MASQUERADE
+    EOF
+    chmod +x /root/soal2.sh
+    ```
+    Tiga pengamannya:
+    * export PATH=... memastikan iptables dan sysctl tetap ketemu walaupun proses boot memakai daftar folder yang terbatas.  
+    * sysctl ... || echo ... artinya kalau cara pertama ditolak, coba cara kedua.
+    * iptables -C ... || iptables -A ...   
+    artinya cek dulu apakah aturannya sudah ada, dan tambahkan hanya kalau belum. Jadi kalau script jalan dua kali, aturannya tidak dobel  
+    
+    Langkah 2: Panggil script dari network config  
+    Klik kanan rootkit → Edit network configuration, lalu ubah bagian eth0 saja menjadi:  
+    ```
+    auto eth0
+    iface eth0 inet dhcp
+        up /bin/bash /root/soal2.sh || true
+    ```
+    Langkah 3: Stop lalu Start rootkit, tunggu sekitar 20 detik, lalu cek di rootkit:
+    ```
+    ip a | grep inet
+    cat /proc/sys/net/ipv4/ip_forward
+    iptables -t nat -L POSTROUTING -n -v
+    ```
+    Lalu di alpha:
+    ```
+    ping -c 3 8.8.8.8
+    ```
+    Hasil yang diharapkan:  
+    * Semua interface punya IP.  
+    * ip_forward bernilai 1.  
+    * Ada satu baris MASQUERADE.  
+    * Alpha bisa ping 8.8.8.8.
+      
+    <br><img width="704" height="368" alt="image" src="https://github.com/user-attachments/assets/54451ed9-2418-45ec-a996-8f8ad8bb3aed" /><br>
+    <br><img width="571" height="183" alt="image" src="https://github.com/user-attachments/assets/4eeae2f1-46ac-46ea-abc7-a0f16404a5a8" /><br>
+    Aman yaps.
 
 ## Soal 3
 ### Perintah soal
@@ -302,8 +303,8 @@ Aman yaps.
    cat /etc/resolv.conf
    ping -c 3 google.com
    ```
-<br><img width="834" height="507" alt="image" src="https://github.com/user-attachments/assets/500e0950-0161-4334-8027-cd1de22b5c5d" /><br>  
-All done!
+    <br><img width="834" height="507" alt="image" src="https://github.com/user-attachments/assets/500e0950-0161-4334-8027-cd1de22b5c5d" /><br>  
+    All done!
 
 ---
 
@@ -561,8 +562,10 @@ prab berperan sebagai master, sedangkan tedd sebagai slave yang memiliki salinan
     | `dig tedd.k59.com` | `10.93.3.3` | A record tedd benar |
     | `dig k59.com NS` | `prab.k59.com.`, `tedd.k59.com.` | Dua nameserver resmi terdaftar |
     | `dig @10.93.3.3 k59.com` | `10.93.4.2`, dijawab tedd | Slave menjawab authoritative dari sisi klien |
-    | `dig google.com` | 6 IP Google | Forwarders di prab jalan |  
+    | `dig google.com` | 6 IP Google | Forwarders di prab jalan |
+   
    <br><img width="497" height="257" alt="image" src="https://github.com/user-attachments/assets/82a1313c-2471-49e8-8817-491b956cfb45" /><br>
+   
    Setelah prab di-restart, alpha tetap mendapat jawaban 10.93.4.2 dengan flag aa dan SERVER: 10.93.3.2. Artinya BIND di prab menyala sendiri saat boot, dan autostart-nya berhasil. Dengan ini, nomor 4 selesai sepenuhnya:
    * Zona k59.com authoritative di prab, dengan SOA, NS, dan A record sesuai soal.
    * Notify dan allow-transfer ke tedd, dan tedd menjawab authoritative dengan serial yang sama.
