@@ -706,14 +706,91 @@ Tambahkan semua A record di prab. Tentukan dulu satu dari lima IP router untuk r
 ---
 
 ## Soal 6
-*Deskripsi dan pembahasan soal nomor 6. Tolong dilanjut yaa, fio*
+**Perintah soal:**
+- Pastikan *zone transfer* berjalan lancar dari `prab` (Master) ke `tedd` (Slave).
+- Pastikan `tedd` telah menerima salinan zona terbaru dari `prab`.
+- Nilai serial SOA di kedua DNS server harus sama persis karena keduanya tidak bisa dipisahkan dan saling melengkapi.
 
-Bonus: tedd juga punya catatan yang sama
-Karena soal nomor 6 nanti meminta prab dan tedd identik, sekalian buktikan dari alpha:
-sh
+**Konsep & Pembahasan:**
+ DNS *Master-Slave* bekerja dengan mekanisme replikasi zona. Ketika ada penambahan atau perubahan record pada server Master (`prab`), nomor serial SOA (*Start of Authority*) di file zona dinaikkan (misalnya dari `2026092801` menjadi `2026092802`).
+
+Server Master akan mengirimkan sinyal *notify* ke IP Slave (`tedd`), lalu server Slave akan meminta proses *zone transfer* (AXFR/IXFR) untuk menyalin data zona terbaru. Dengan demikian, `tedd` dapat memberikan jawaban *authoritative* yang identik dengan `prab` kepada seluruh klien di dalam jaringan.
+
+**Langkah pengerjaan:**
+
+**1. Pastikan konfigurasi izin transfer pada Master (`prab`)**
+   Di console `prab`, pastikan file `/etc/bind/named.conf.local` telah mendeklarasikan `notify yes;`, `also-notify`, dan `allow-transfer` ke IP `tedd` (`10.93.3.3`):
+   ```bash
+   cat > /etc/bind/named.conf.local <<'EOF'
+   zone "k59.com" {
+       type master;
+       notify yes;
+       also-notify { 10.93.3.3; };
+       allow-transfer { 10.93.3.3; };
+       file "/etc/bind/k59/k59.com";
+   };
+   EOF
+**2. Pastikan konfigurasi zona Slave pada tedd**
+Di console tedd, pastikan zona k59.com diatur sebagai type slave; yang mengarah ke Master (10.93.3.2):
+
+Bash
+cat > /etc/bind/named.conf.local <<'EOF'
+zone "k59.com" {
+    type slave;
+    masters { 10.93.3.2; };
+    file "/var/lib/bind/k59.com";
+};
+EOF
+**3. Pemicuan Zone Transfer**
+Restart service BIND di kedua node agar proses replikasi dipicu:
+
+Di prab: service named restart
+
+Di tedd: service named restart
+
+**4. Verifikasi Salinan Zona di tedd**
+Cek apakah berkas zona dari prab sudah berhasil diterima dan disimpan oleh tedd:
+
+Bash
+ls -l /var/lib/bind/
+Hasil: Terdapat berkas k59.com yang menandakan salinan zona telah diterima dari Master.
+
+**5. Pengujian Klien (dari alpha)**
+Jalankan query SOA ke Master (prab) dan Slave (tedd) untuk memastikan kesamaan nilai serial:
+
+Bash
+dig @10.93.3.2 k59.com SOA +short
+dig @10.93.3.3 k59.com SOA +short
+Hasil Output:
+
+Plaintext
+prab.k59.com. root.k59.com. 2026092802 604800 86400 2419200 604800
+prab.k59.com. root.k59.com. 2026092802 604800 86400 2419200 604800
+**Pengujian Resolusi Seluruh Hostname via tedd**
+Lakukan loop testing dari klien alpha untuk memastikan tedd meresolusi seluruh A Record node:
+
+Bash
 for n in rootkit alpha beta gamma delta epsilon abbey penny obladi desmond oblada molly; do
   echo "$n.k59.com -> $(dig @10.93.3.3 +short $n.k59.com)"
 done
+Hasil Output:
+
+Plaintext
+rootkit.k59.com -> 10.93.3.1
+alpha.k59.com -> 10.93.1.2
+beta.k59.com -> 10.93.1.3
+gamma.k59.com -> 10.93.1.4
+delta.k59.com -> 10.93.5.2
+epsilon.k59.com -> 10.93.5.3
+abbey.k59.com -> 10.93.2.2
+penny.k59.com -> 10.93.4.2
+obladi.k59.com -> 10.93.3.4
+desmond.k59.com -> 10.93.3.5
+oblada.k59.com -> 10.93.3.6
+molly.k59.com -> 10.93.3.7
+
+<img width="888" height="807" alt="image" src="https://github.com/user-attachments/assets/dfb6432f-aaef-4e27-a498-7dfb7da23959" />
+
 ---
 
 ## Soal 7
