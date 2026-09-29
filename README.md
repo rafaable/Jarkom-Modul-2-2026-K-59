@@ -815,7 +815,7 @@ Pada soal ini, kita memperluas konfigurasi DNS (`k59.com`) di Master (`prab`) de
 * **CNAME (Canonical Name):** Membuat alias nama domain. Domain `www` diarahkan ke `penny`, dan `static` diarahkan ke `abbey`.
 
 ### Langkah pengerjaan
-1. **Perbarui file zona master di `prab`**
+**1. Perbarui file zona master di `prab`**
    Edit atau timpa file zona `/etc/bind/k59/k59.com` dengan menaikkan nomor serialnya (misalnya dari `2026092802` menjadi `2026092803`) dan tambahkan record berikut di bagian bawah:
    ```bash
    cat > /etc/bind/k59/k59.com <<'EOF'
@@ -858,17 +858,134 @@ Pada soal ini, kita memperluas konfigurasi DNS (`k59.com`) di Master (`prab`) de
    named-checkzone k59.com /etc/bind/k59/k59.com
    rndc reload
    ```
-   
+  **2. Sinkronisasi Slave di tedd**
+Pastikan BIND di tedd memuat perubahan zona terbaru:
+```bash
+pkill -9 named && /usr/sbin/named -u bind
+```
+**3. Verifikasi dari Dua Klien Berbeda (alpha dan delta)**
+Jalankan perintah pengujian berikut di console alpha dan delta:
 
+```Bash
+dig +short vault.k59.com
+dig +short core.k59.com
+dig +short [www.k59.com](https://www.k59.com)
+dig +short static.k59.com
+```
+<img width="1110" height="842" alt="image" src="https://github.com/user-attachments/assets/14f65239-7c27-4c95-aca6-6f8f60ff9363" />
+
+<img width="1140" height="845" alt="image" src="https://github.com/user-attachments/assets/97b8a768-d98d-4e12-8939-3cf886b8adc5" />
+
+<img width="1122" height="847" alt="image" src="https://github.com/user-attachments/assets/e1dda0a1-15d9-453b-9f27-0d929443f32f" />
+
+  
 ---
 
 ## Soal 8
-*Deskripsi dan pembahasan soal nomor 8.*
+### Perintah Soal
+1. Di `prab` (ns1) deklarasikan reverse zone untuk segmen jaringan tempat `abbey, penny,` area `vault`, dan area `core` berada.
+2. Di `tedd` (ns2) tarik reverse zone tersebut sebagai slave.
+3. Isi record PTR untuk keempat hostname tersebut agar pencarian balik (reverse lookup) IP address mengembalikan hostname yang benar.
+4. Pastikan query reverse untuk alamat-alamat tersebut dijawab secara authoritative.
+
+### Konsep & Pembahasan
+Reverse DNS (PTR record) berfungsi untuk memetakan alamat IP kembali menjadi nama domain (kebalikan dari A record). Karena perangkat berada di subnet berbeda (`10.93.2.x, 10.93.3.x`, dan `10.93.4.x`), kita mendeklarasikan beberapa reverse zone (`in-addr.arpa`) di Master prab lalu mereplikasikannya ke Slave tedd.
+
+### Langkah Pengerjaan
+**1. Deklarasi Reverse Zone di Master (prab)**
+Tambahkan konfigurasi zona PTR ke /etc/bind/named.conf.local:
+
+```Bash
+cat >> /etc/bind/named.conf.local <<'EOF'
+
+zone "2.93.10.in-addr.arpa" {
+    type master;
+    notify yes;
+    also-notify { 10.93.3.3; };
+    allow-transfer { 10.93.3.3; };
+    file "/etc/bind/k59/rev.2";
+};
+
+zone "3.93.10.in-addr.arpa" {
+    type master;
+    notify yes;
+    also-notify { 10.93.3.3; };
+    allow-transfer { 10.93.3.3; };
+    file "/etc/bind/k59/rev.3";
+};
+
+zone "4.93.10.in-addr.arpa" {
+    type master;
+    notify yes;
+    also-notify { 10.93.3.3; };
+    allow-transfer { 10.93.3.3; };
+    file "/etc/bind/k59/rev.4";
+};
+EOF
+```
+Buat file pemetaan PTR masing-masing subnet di /etc/bind/k59/:
+
+File rev.2 (Subnet 10.93.2.x untuk abbey di .2):
+
+```Bash
+cat > /etc/bind/k59/rev.2 <<'EOF'
+$TTL    604800
+@       IN      SOA     prab.k59.com. root.k59.com. (2026092801 604800 86400 2419200 604800)
+@       IN      NS      prab.k59.com.
+@       IN      NS      tedd.k59.com.
+2       IN      PTR     abbey.k59.com.
+EOF
+```
+File rev.3 (Subnet 10.93.3.x untuk vault & core):
+
+```Bash
+cat > /etc/bind/k59/rev.3 <<'EOF'
+$TTL    604800
+@       IN      SOA     prab.k59.com. root.k59.com. (2026092801 604800 86400 2419200 604800)
+@       IN      NS      prab.k59.com.
+@       IN      NS      tedd.k59.com.
+4       IN      PTR     obladi.k59.com.
+5       IN      PTR     desmond.k59.com.
+6       IN      PTR     oblada.k59.com.
+7       IN      PTR     molly.k59.com.
+EOF
+```
+File rev.4 (Subnet 10.93.4.x untuk penny di .2):
+
+```Bash
+cat > /etc/bind/k59/rev.4 <<'EOF'
+$TTL    604800
+@       IN      SOA     prab.k59.com. root.k59.com. (2026092801 604800 86400 2419200 604800)
+@       IN      NS      prab.k59.com.
+@       IN      NS      tedd.k59.com.
+2       IN      PTR     penny.k59.com.
+EOF
+```
+Simpan file, atur hak akses kepemilikan (chown -R bind:bind /etc/bind/k59), lalu jalankan rndc reload.
+
+**2. Konfigurasi Slave Reverse Zone di tedd**
+Tambahkan blok zona slave yang sama ke /etc/bind/named.conf.local di tedd lalu restart BIND.
+
+**3. Verifikasi Reverse Lookup dari Klien (alpha)**
+```Bash
+dig -x 10.93.2.2 +short
+dig -x 10.93.4.2 +short
+dig -x 10.93.3.4 +short
+dig -x 10.93.3.6 +short
+```
+Hasil yang diharapkan:
+Masing-masing IP sukses mengembalikan hostname yang sesuai (abbey.k59.com., penny.k59.com., obladi.k59.com., oblada.k59.com.).
+
+<img width="1142" height="845" alt="image" src="https://github.com/user-attachments/assets/383e3320-dd9a-4373-b682-d555b6ebbc5f" />
+
 
 ---
 
 ## Soal 9
-*Deskripsi dan pembahasan soal nomor 9.*
+### Perintah Soal
+1. Jalankan layanan web statis pada hostname di node area `vault` (menggunakan Apache).
+2. Buka folder direktori `/arsip/` dan aktifkan fitur autoindex (directory listing) pada konfigurasi Apache sehingga seluruh daftar file di dalamnya dapat ditelusuri langsung dari browser.
+3. Akses pengujian wajib dilakukan melalui hostname, bukan IP address.
 
 ---
 
