@@ -730,10 +730,11 @@ Server Master akan mengirimkan sinyal *notify* ke IP Slave (`tedd`), lalu server
        file "/etc/bind/k59/k59.com";
    };
    EOF
+```
 **2. Pastikan konfigurasi zona Slave pada tedd**
 Di console tedd, pastikan zona k59.com diatur sebagai type slave; yang mengarah ke Master (10.93.3.2):
 
-Bash
+```Bash
 cat > /etc/bind/named.conf.local <<'EOF'
 zone "k59.com" {
     type slave;
@@ -741,6 +742,7 @@ zone "k59.com" {
     file "/var/lib/bind/k59.com";
 };
 EOF
+```
 **3. Pemicuan Zone Transfer**
 Restart service BIND di kedua node agar proses replikasi dipicu:
 
@@ -751,16 +753,17 @@ Di tedd: service named restart
 **4. Verifikasi Salinan Zona di tedd**
 Cek apakah berkas zona dari prab sudah berhasil diterima dan disimpan oleh tedd:
 
-Bash
+```Bash
 ls -l /var/lib/bind/
 Hasil: Terdapat berkas k59.com yang menandakan salinan zona telah diterima dari Master.
-
+```
 **5. Pengujian Klien (dari alpha)**
 Jalankan query SOA ke Master (prab) dan Slave (tedd) untuk memastikan kesamaan nilai serial:
 
-Bash
+```Bash
 dig @10.93.3.2 k59.com SOA +short
 dig @10.93.3.3 k59.com SOA +short
+```
 Hasil Output:
 
 Plaintext
@@ -769,12 +772,14 @@ prab.k59.com. root.k59.com. 2026092802 604800 86400 2419200 604800
 **Pengujian Resolusi Seluruh Hostname via tedd**
 Lakukan loop testing dari klien alpha untuk memastikan tedd meresolusi seluruh A Record node:
 
-Bash
+```Bash
 for n in rootkit alpha beta gamma delta epsilon abbey penny obladi desmond oblada molly; do
   echo "$n.k59.com -> $(dig @10.93.3.3 +short $n.k59.com)"
+```
 done
 Hasil Output:
 
+``bash
 Plaintext
 rootkit.k59.com -> 10.93.3.1
 alpha.k59.com -> 10.93.1.2
@@ -788,7 +793,7 @@ obladi.k59.com -> 10.93.3.4
 desmond.k59.com -> 10.93.3.5
 oblada.k59.com -> 10.93.3.6
 molly.k59.com -> 10.93.3.7
-
+```
 <img width="888" height="807" alt="image" src="https://github.com/user-attachments/assets/dfb6432f-aaef-4e27-a498-7dfb7da23959" />
 
 ---
