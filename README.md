@@ -779,7 +779,7 @@ for n in rootkit alpha beta gamma delta epsilon abbey penny obladi desmond oblad
 done
 Hasil Output:
 
-``bash
+```bash
 Plaintext
 rootkit.k59.com -> 10.93.3.1
 alpha.k59.com -> 10.93.1.2
