@@ -799,7 +799,66 @@ molly.k59.com -> 10.93.3.7
 ---
 
 ## Soal 7
-*Deskripsi dan pembahasan soal nomor 7.*
+### Perintah soal
+1. `abbey` dan `penny` sebagai gerbang utama, `obladi` dan `desmond` sebagai web statis, `oblada` dan `molly` sebagai web dinamis.
+2. Tambahkan pada zona `k59.com` A record untuk:
+   - `vault.k59.com` (mengarah ke IP `obladi` & `desmond`)
+   - `core.k59.com` (mengarah ke IP `oblada` & `molly`)
+3. Tetapkan CNAME:
+   - `www.k59.com` → `penny.k59.com`
+   - `static.k59.com` → `abbey.k59.com`
+4. Verifikasi dari dua klien berbeda bahwa seluruh hostname tersebut ter-resolve ke tujuan yang benar dan konsisten.
+
+### Konsep & Pembahasan
+Pada soal ini, kita memperluas konfigurasi DNS (`k59.com`) di Master (`prab`) dengan menambahkan dua jenis record penting:
+* **Multiple A Record (Round-Robin):** Satu nama domain (`vault` dan `core`) dihubungkan ke dua alamat IP sekaligus untuk mendistribusikan titik akses ke beberapa server.
+* **CNAME (Canonical Name):** Membuat alias nama domain. Domain `www` diarahkan ke `penny`, dan `static` diarahkan ke `abbey`.
+
+### Langkah pengerjaan
+1. **Perbarui file zona master di `prab`**
+   Edit atau timpa file zona `/etc/bind/k59/k59.com` dengan menaikkan nomor serialnya (misalnya dari `2026092802` menjadi `2026092803`) dan tambahkan record berikut di bagian bawah:
+   ```bash
+   cat > /etc/bind/k59/k59.com <<'EOF'
+   $TTL    604800
+   @       IN      SOA     prab.k59.com. root.k59.com. (
+                           2026092803 ; Serial
+                           604800     ; Refresh
+                           86400      ; Retry
+                           2419200    ; Expire
+                           604800 )   ; Negative Cache TTL
+   ;
+   @       IN      NS      prab.k59.com.
+   @       IN      NS      tedd.k59.com.
+   @       IN      A       10.93.4.2   ; apex -> penny
+
+   prab    IN      A       10.93.3.2
+   tedd    IN      A       10.93.3.3
+   rootkit IN      A       10.93.3.1
+   alpha   IN      A       10.93.1.2
+   beta    IN      A       10.93.1.3
+   gamma   IN      A       10.93.1.4
+   abbey   IN      A       10.93.2.2
+   obladi  IN      A       10.93.3.4
+   desmond IN      A       10.93.3.5
+   oblada  IN      A       10.93.3.6
+   molly   IN      A       10.93.3.7
+   penny   IN      A       10.93.4.2
+   delta   IN      A       10.93.5.2
+   epsilon IN      A       10.93.5.3
+
+   ; --- TAMBAHAN SOAL 7 ---
+   vault   IN      A       10.93.3.4
+   vault   IN      A       10.93.3.5
+   core    IN      A       10.93.3.6
+   core    IN      A       10.93.3.7
+   www     IN      CNAME   penny
+   static  IN      CNAME   abbey
+   EOF
+
+   named-checkzone k59.com /etc/bind/k59/k59.com
+   rndc reload
+   ```
+   
 
 ---
 
