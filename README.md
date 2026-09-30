@@ -2018,26 +2018,480 @@ Stepnya cukup atur gateway, terus atur backend, terus tes log
 
 ## Soal 15
 ### Perintah soal
+Soal ini meminta bikin dua path website tambahan:
+* Di Penny kita harus buat /eternal yang diarahkan oleh Apache ke backend /var/www/eternal, dan PHP harus bisa dirender.
+* Di Abbey kita harus buat /orion yang diarahkan ke /var/www/orion, tetapi hanya file statis, jadi tidak menggunakan PHP.
+  
 ### Langkah pengerjaan
+1. Di penny, cek apache
+   ```
+   apache2ctl -v
+   ```
+   Buat folder backend
+   ```
+   mkdir -p /var/www/eternal
+   ```
+   Buat halaman php untuk testing
+   ```
+    cat > /var/www/eternal/index.php <<'EOF'
+    <?php
+    echo "<h1>Eternal</h1>";
+    echo "<p>PHP rendering berhasil.</p>";
+    echo "<p>Server: " . $_SERVER['SERVER_NAME'] . "</p>";
+    ?>
+    EOF
+   ```
+   Install php FM
+   ```
+    apt-get update
+    apt-get install -y php php-fpm
+    apt-get install -y php8.4-fpm
+    service php8.4-fpm start
+   ```
+   Aktifkan module yang dibutuhkan PHP-FPM
+   ```
+   a2enmod proxy proxy_fcgi setenvif
+   ```
+   Config PHP-FPM eksternal
+   ```
+    cat > /etc/apache2/conf-available/eternal-php.conf <<'EOF'
+    <Directory /var/www/eternal>
+        Require all granted
+        DirectoryIndex index.php index.html
+    
+        <FilesMatch "\.php$">
+            SetHandler "proxy:unix:/run/php/php8.4-fpm.sock|fcgi://localhost/"
+        </FilesMatch>
+    </Directory>
+    EOF
+   ```
+   Aktifkan config
+   ```
+   a2enconf eternal-php
+   apache2ctl configtest
+   ```
+2. Hubungkan /eternal ke folder /var/www/eternal di Apache Penny
+   Config Virtualhost
+   ```
+    cat > /etc/apache2/sites-available/eternal.conf <<'EOF'
+    <VirtualHost *:80>
+        ServerName penny.k59.com
+    
+        Alias /eternal/ /var/www/eternal/
+    
+        <Directory /var/www/eternal>
+            Require all granted
+            DirectoryIndex index.php index.html
+        </Directory>
+    </VirtualHost>
+    EOF
+   ```
+   Maksudnya: ketika orang mengakses `http://penny.k59.com/eternal/`, Apache mengambil file dari `/var/www/eternal/`
+   Aktifkan site
+   ```
+   a2ensite eternal.conf
+   apache2ctl configtest
+   ```
+   Restart apache
+   ```
+   service apache2 restart
+   ```
+   Di penny, jalankan
+   ```
+   curl -H "Host: penny.k59.com" http://127.0.0.1/eternal/
+   ```
+   Kalau berhasil, harus keluar hasil HTML seperti:
+    ```
+    <h1>Eternal</h1>
+    <p>PHP rendering berhasil.</p>
+    ```
+    <br><img width="501" height="28" alt="image" src="https://github.com/user-attachments/assets/796df889-1228-4faa-97b9-cd60ee1f6fee" /><br>
+    bagian Penny /eternal sudah selesai  
+3. Pembuatan /var/www/orion dan konfigurasi static /orion
+   Di abbey, buat folder orion
+   ```
+   mkdir -p /var/www/orion
+   ```
+   Buat file html statis
+   ```
+    cat > /var/www/orion/index.html <<'EOF'
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Orion</title>
+    </head>
+    <body>
+        <h1>Orion</h1>
+        <p>Static content berhasil.</p>
+    </body>
+    </html>
+    EOF
+   ```
+   Tambahkan config abey-proxy
+   ```
+    cat > /etc/nginx/sites-available/abbey-proxy <<'EOF'
+    upstream core_backend {
+        server 10.93.3.6;
+        server 10.93.3.7;
+    }
+    
+    server {
+        listen 80;
+        server_name static.k59.com;
+    
+        location / {
+            proxy_pass http://core_backend;
+    
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+    
+    server {
+        listen 80;
+        server_name abbey.k59.com 10.93.2.2;
+    
+        location /orion/ {
+            alias /var/www/orion/;
+            index index.html;
+        }
+    
+        location = /orion {
+            return 301 /orion/;
+        }
+    
+        location / {
+            return 302 http://static.k59.com$request_uri;
+        }
+    }
+    EOF
+   ```
+   Cek config nginx
+   ```
+   nginx -t
+   ```
+   Restart nginx
+   ```
+   service nginx restart
+   ```
+   Test /orion
+   ```
+   curl -H "Host: abbey.k59.com" http://127.0.0.1/orion/
+   ```
+   <br><img width="432" height="196" alt="image" src="https://github.com/user-attachments/assets/22ecccc5-2ea7-4359-bb96-f1ce21d7c3a5" /><br>
+   File html berhasil muncul. Soal 15 selesai
+
+   
 
 ---
 
 ## Soal 16
 ### Perintah soal
+Jadi, **Soal 16 itu intinya nyuruh kita menguji seberapa kuat/performa web server kita ketika menerima banyak request secara bersamaan.**
+
+Bayangin kita punya dua pintu masuk website:  
+* `www.k59.com` → masuk ke **Penny**
+* `static.k59.com` → masuk ke **Abbey**
+
+Nah, kita pura-pura jadi **250 orang yang melakukan request ke website**, tetapi request-nya dibuat secara bersamaan dengan **10 koneksi aktif dalam satu waktu**  
+
+Caranya menggunakan **ApacheBench (`ab`)** dari salah satu client, misalnya Alpha  
+
+Setelah itu kita **lihat hasil pengujiannya**, misalnya:
+* berapa request yang berhasil,
+* berapa lama total pengujian,
+* berapa request per detik yang bisa dilayani,
+* berapa lama rata-rata server merespons,
+* apakah ada request yang gagal.
+
+Jadi sederhananya:
+> **Soal 16 meminta kita melakukan simulasi beban terhadap dua website yang sudah kita bangun, lalu mencatat performa masing-masing server ketika menerima 250 request dengan 10 request berjalan bersamaan.**
+
 ### Langkah pengerjaan
+1. Di alpha, cek apache bench
+   ```
+    apk update
+    apk add apache2-utils
+   ```
+   Benchmark www.k59.com
+   ```
+   ab -n 250 -c 10 http://www.k59.com/
+   ```
+   * -n 250 → total 250 request
+   * -c 10 → maksimal 10 request berjalan bersamaan
+   * http://www.k59.com/ → website yang diuji
+   
+   <br><img width="456" height="594" alt="image" src="https://github.com/user-attachments/assets/8230ffbc-8025-41ca-862d-5305274111f6" /><br>
+
+   250 request dikirim
+   0 gagal koneksi
+   0 gagal menerima response
+   125 response punya ukuran konten yang berbeda dari ukuran yang dianggap ApacheBench sebagai normal  
+
+   Performa yang tercatat:
+   * Requests per second: 2149.41
+   * Time per request:    4.652 ms
+  
+   Pengujian kedua
+   ```
+   ab -n 250 -c 10 http://static.k59.com/
+   ```
+   <br><img width="526" height="567" alt="image" src="https://github.com/user-attachments/assets/d07b3867-cfa6-4e24-864e-db3f439f207c" /><br>
+
+   **Perbandingan Hasil Benchmark**
+
+| Parameter | [www.k59.com](https://www.google.com/search?q=https%3A%2F%2Fwww.k59.com) | static.k59.com |
+| --- | --- | --- |
+| **Server** | Apache (Penny) | Nginx (Abbey) |
+| **Requests** | 250 | 250 |
+| **Concurrency** | 10 | 10 |
+| **Failed Requests** | 125 (Length) | 124 (Length) |
+| **Requests / sec** | 2149.41 | 1946.57 |
+| **Time / request** | 4.652 ms | 5.137 ms |
+| **Response Size** | 24 bytes | 615 bytes |
+
+**Analisis Sederhana**
+* Pengujian dilakukan dari klien **Alpha** menggunakan ApacheBench (`ab`) dengan **250 request** dan tingkat konkurensi **10** ke kedua website.
+* **[www.k59.com](https://www.google.com/search?q=https%3A%2F%2Fwww.k59.com)** (dilayani Apache di Penny) mencatat sekitar **2.149,41 request/detik** dengan rata-rata waktu **4,652 ms** per request.
+* **static.k59.com** (dilayani Nginx di Abbey) mencatat sekitar **1.946,57 request/detik** dengan rata-rata waktu **5,137 ms** per request.
+* **Catatan Failed Requests:** Angka *failed* yang muncul pada kedua server murni disebabkan oleh perbedaan panjang respons (*Length*), bukan karena kegagalan koneksi (*Connect* atau *Receive*). Ini berarti seluruh koneksi berhasil terhubung dengan sempurna.
+
+**Kesimpulan**
+Pengujian performa menggunakan ApacheBench menunjukkan bahwa kedua server berhasil menerima dan memproses seluruh koneksi dengan stabil. [www.k59.com](https://www.google.com/search?q=https%3A%2F%2Fwww.k59.com) mencatatkan throughput 2149,41 request/detik dengan latensi rata-rata 4,652 ms, sedangkan static.k59.com mencatatkan 1946,57 request/detik dengan latensi rata-rata 5,137 ms. Terdapat sejumlah *failed requests* pada keduanya yang seluruhnya dikategorikan sebagai perbedaan panjang respons (*Length*), bukan kegagalan koneksi.
 
 ---
 
 ## Soal 17
 ### Perintah soal
+* Tambahkan TXT record pada DNS untuk semua klien sayap kiri dan sayap kanan (Alpha, Beta, Gamma, Delta, Epsilon).
+* Jika DNS di-query TXT terhadap nama domain mereka (contoh: alpha.<xxxx>.com), sistem harus mengembalikan teks berupa nama hostname mereka masing-masing (contoh: "alpha").
 ### Langkah pengerjaan
 
+1. Master DNS server adalah prab, sehingga, sehingga kita perlu masuk ke prab  
+   Cek zone file
+   ```
+   grep -E '^(alpha|beta|gamma|delta|epsilon)' /etc/bind/k59/k59.com
+   ```
+   <br><img width="466" height="71" alt="image" src="https://github.com/user-attachments/assets/875850bb-de7d-4b30-8ed3-2bc5f83beac0" /><br>
+   Tambahkan TXT record ke zone file yang sudah ada
+   ```
+   nano /etc/bind/k59/k59.com
+   ```
+   Tambahkan
+   ```
+    alpha   IN      TXT     "alpha"
+    beta    IN      TXT     "beta"
+    gamma   IN      TXT     "gamma"
+    delta   IN      TXT     "delta"
+    epsilon IN      TXT     "epsilon"
+   ```
+   Cek serial SOA
+   ```
+   grep -A1 'SOA' /etc/bind/k59/k59.com
+   ```
+   <br><img width="330" height="35" alt="image" src="https://github.com/user-attachments/assets/55031d36-b548-4f5e-a333-78085d438875" /><br>
+   Buka
+   ```
+   nano /etc/bind/k59/k59.com
+   ```
+   Cek zoned file, output : OK
+   ```
+   named-checkzone k59.com /etc/bind/k59/k59.com
+   ```
+   Reload DNS di prab, cek tiap tiap node
+   ```
+   rndc reload
+   
+    for host in alpha beta gamma delta epsilon; do
+        echo -n "$host: "
+        dig @10.93.3.2 "$host.k59.com" TXT +short
+    done
+   ```
+   
+   <br><img width="546" height="158" alt="image" src="https://github.com/user-attachments/assets/20901953-00b0-4d12-9e03-7a5dd55422f4" /><br>
+2. Cek TXT record di Slave (Tedd), masih di prab, query langsung ke DNS slave
+   ```
+    for host in alpha beta gamma delta epsilon; do
+        echo -n "$host: "
+        dig @10.93.3.3 "$host.k59.com" TXT +short
+    done
+   ```
+   Jika DNS service tedd tidak menerima koneksi
+   ```
+   apt-get update
+   DEBIAN_FRONTEND=noninteractive apt-get install -y bind9 bind9-utils dnsutils
+   which named
+   ls -l /etc/init.d/ | grep -E 'bind|named'
+   named-checkconf
+   service named start
+   service named status
+   ```
+   Jika bind sudah jalan, Tambahkan zone slave di Tedd
+   ```
+   nano /etc/bind/named.conf.local
+   ```
+   Tambahkan ini di bagian paling bawah
+   ```
+    zone "k59.com" {
+        type slave;
+        masters { 10.93.3.2; };
+        file "/var/lib/bind/k59.com";
+    };
+   ```
+   Cek konfig
+   ```
+   named-checkconf
+   service named reload
+   ls -l /var/lib/bind/k59.com
+   ```
+   Verifikasi TXT di Tedd. Sekarang di tedd jalankan:
+   ```
+    for host in alpha beta gamma delta epsilon; do
+        echo -n "$host: "
+        dig @10.93.3.3 "$host.k59.com" TXT +short
+    done
+   ```
+   <br><img width="467" height="144" alt="image" src="https://github.com/user-attachments/assets/1aeb7c9e-749b-47d4-8784-08663b949355" /><br>
+   Kelima nama host sudah muncul ketika dipanggil, sengan ini nomor 17 selesai.
+   
 ---
 
 ## Soal 18
 ### Perintah soal
-### Langkah pengerjaan
+Menguji TTL/cache DNS dengan mengubah A record `abbey.k59.com`.
 
+Targetnya:
+1. IP awal abbey.k59.com = 10.93.2.2
+2. TTL record dibuat 15 detik
+3. IP diubah ke IP fiktif yang valid
+4. Serial SOA di Prab dinaikkan
+5. Tedd sinkron
+6. Kita buktikan efek cache:
+   * sebelum perubahan → IP lama
+   * sebelum 15 detik habis → masih bisa terlihat IP lama karena cache
+   * setelah TTL habis → IP baru
+
+Kita mulai dari verifikasi kondisi awal, jangan ubah apa-apa dulu.
+### Langkah pengerjaan
+1. Cek A record Abbey di Prab, di prab loh ya
+   ```
+   dig @10.93.3.2 abbey.k59.com A
+   ```
+   Ubah TTL record Abbey
+   ```
+   nano /etc/bind/k59/k59.com
+   ```
+   Cari  
+   > abbey   IN      A       10.93.2.2
+     
+   Ubah jadi  
+   > abbey   15      IN      A       10.93.2.2
+
+   Angka 15 adalah TTL, artinya resolver boleh menyimpan hasil record tersebut di cache selama 15 detik.
+   ```
+   named-checkzone k59.com /etc/bind/k59/k59.com
+   ```
+   Pastikan outputnya OK, lalu naikkan serial. Cek serial dulu di prab: 
+   ```
+   grep -A1 'SOA' /etc/bind/k59/k59.com
+   ```
+   <img width="541" height="53" alt="image" src="https://github.com/user-attachments/assets/2087c912-36f5-46bd-8f50-8337f2f8bdc9" /><br>
+   
+   Serial sekarang 2026092804, sehingga ubah menjadi 2026092805, edit dengan
+   ```
+   nano /etc/bind/k59/k59.com
+   ```
+   Lalu
+   ```
+   rndc reload
+   ```
+   Verifikasi TTL
+   ```
+   dig @10.93.3.2 abbey.k59.com A
+   ```
+   Harus output begini
+   > abbey.k59.com.    15    IN    A    10.93.2.2
+
+   <br><img width="681" height="377" alt="image" src="https://github.com/user-attachments/assets/4cee1920-7cfc-4909-afc6-be5e39bb7a19" /><br>
+   Sudah sesuai, TTL sudah ditambahkan
+3. Di prab, cara cari record IP abbey:
+   ```
+   grep -E '^abbey[[:space:]]' /etc/bind/k59/k59.com
+   ```
+   Cara ubah IP nya
+   ```
+   sed -i 's/^abbey[[:space:]]\+15[[:space:]]\+IN[[:space:]]\+A[[:space:]]\+10\.93\.2\.100/abbey 15 IN A 10.93.2.2/' /etc/bind/k59/k59.com
+   ```
+   Cara naikin serial
+   ```
+   sed -i 's/2026092807/2026092808/' /etc/bind/k59/k59.com
+   ```
+   Check
+   ```
+   rndc reload
+   dig @10.93.3.2 abbey.k59.com A +short
+   rndc reload k59.com
+   ```
+   IP abbey harus 10.93.2.2  
+   Intinya kalau prab sebagai master DNS merubah IP, maka di yang lainnya ikut berubah
+7. Ubah IP ke IP fiktif
+   ```
+   nano /etc/bind/k59/k59.com
+   ```
+   Ubah IP jadi .100 dan naikin serial, lalu jalankan perintah:
+   ```
+    named-checkzone k59.com /etc/bind/k59/k59.com
+    rndc reload
+   ```
+   Verifikasi perubahan ke prab
+   ```
+   dig @10.93.3.2 abbey.k59.com A +short
+   ```
+   <br><img width="527" height="354" alt="image" src="https://github.com/user-attachments/assets/5cb85585-7937-4ecc-8e9f-625de0fbab05" /><br>
+   Hasilnya sudah berubah jadi `10.93.2.100`
+8. Pembuktian IP berubah setelah TTL 15 detik. Di alpha:
+   ```
+   apk add unbound
+   ```
+   Buat config
+   ```
+   nano /etc/unbound/unbound.conf
+   ```
+   Isi dengan:
+   ```
+    server:
+        interface: 0.0.0.0
+        access-control: 10.93.0.0/16 allow
+        do-ip4: yes
+        do-ip6: no
+    
+    forward-zone:
+        name: "k59.com."
+        forward-addr: 10.93.3.2
+   ```
+   Simpan, jalankan unbound
+   ```
+   rc-service unbound start
+   rc-service unbound status
+   ```
+   Tes resolver di alpha
+   ```
+   dig @127.0.0.1 abbey.k59.com A
+   ```
+   <br><img width="433" height="212" alt="image" src="https://github.com/user-attachments/assets/ebc97152-9b78-42f3-a541-4904dc47c422" /><br>
+
+10. Check tedd
+    ```
+    rndc retransfer k59.com
+    dig @10.93.3.3 abbey.k59.com A
+    ```
+    <br><img width="663" height="383" alt="image" src="https://github.com/user-attachments/assets/28235fbe-9dbe-482e-baf5-f80fd3f17c76" /><br>
+    
+
+
+   
 ---
 
 ## Soal 19
