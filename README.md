@@ -1120,49 +1120,932 @@ Hasil: Beranda menampilkan teks sambutan, dan /profil berhasil memuat halaman pr
 ---
 
 ## Soal 11
-*Deskripsi dan pembahasan soal nomor 11.*
+### Perintah soal
+1. Konfigurasikan Penny (menggunakan Apache) sebagai reverse proxy yang mengarah ke semua node di area vault (obladi & desmond).
+2. Konfigurasikan Abbey (menggunakan Nginx) sebagai reverse proxy menuju area core (oblada & molly).
+3. Pastikan kedua gerbang ini meneruskan identitas asli pengunjung ke server backend dengan melakukan forwarding header Host dan X-Real-IP
 
+<br><img width="887" height="520" alt="image" src="https://github.com/user-attachments/assets/638309ba-b6b9-4a68-bfb6-33059f0cd74b" /><br>
+
+
+### Langkah pengerjaan
+1. Install apache2 di Penny  
+   Soal 11 secara spesifik meminta Penny menggunakan Apache sebagai reverse proxy menuju Obladi dan Desmond
+   ```
+   apt update
+   apt install apache2
+   ```
+3. Pastikan backend Obladi & Desmond bisa dijangkau Penny  
+   Sebelum Apache dikonfigurasi, kita pastikan Penny memang bisa mengakses kedua server backend.
+   ```
+   ping -c 3 10.93.3.4
+   ping -c 3 10.93.3.5
+   ```
+4. Aktifkan module reverse proxy Apache  
+   `proxy` adalah module utama agar Apache bisa bertindak sebagai reverse proxy. `proxy_http` diperlukan karena backend kita diakses menggunakan HTTP. Setelah itu biasanya Apache meminta reload/restart.
+   ```
+    a2enmod proxy
+    a2enmod proxy_http
+    a2enmod proxy_balancer
+    a2enmod lbmethod_byrequests
+    a2enmod headers
+   ```
+   
+    proxy & proxy_http supaya Apache bisa meneruskan HTTP  
+    proxy_balancer supaya Apache bisa memiliki beberapa backend  
+    lbmethod_byrequests supaya request dibagi berdasarkan jumlah request  
+    headers supaya Apache bisa meneruskan/mengatur header
+   
+   Cek apakah modul sudah aktif
+   ```
+   apache2ctl -M | grep proxy
+   ```
+   <br><img width="721" height="296" alt="image" src="https://github.com/user-attachments/assets/cd88a5f0-c21d-44f5-b518-08f4be094b99" /><br>
+   Tampilan ini berarti Apache sudah memiliki kemampuan reverse proxy.
+6. Buat konfigurasi VirtualHost Penny  
+   supaya konfigurasi reverse proxy tidak bercampur dengan konfigurasi Apache bawaan.
+   ```
+   nano /etc/apache2/sites-available/penny-proxy.conf
+   ```
+   Isi dengan
+   ```
+    <VirtualHost *:80>
+        ServerName www.k59.com
+    
+        ProxyPreserveHost On
+    
+        <Proxy "balancer://vault">
+            BalancerMember "http://10.93.3.4"
+            BalancerMember "http://10.93.3.5"
+            ProxySet lbmethod=byrequests
+        </Proxy>
+    
+        ProxyPass "/" "balancer://vault/"
+        ProxyPassReverse "/" "balancer://vault/"
+    
+        RequestHeader set X-Real-IP "%{REMOTE_ADDR}s"
+    </VirtualHost>
+   ```
+   `ProxyPreserveHost On` supaya ketika client mengakses www.k59.com, Apache mempertahankan header Host: www.k59.com
+   `RequestHeader set X-Real-IP "%{REMOTE_ADDR}s"` supaya backend mendapatkan IP asli klien
+
+   Kalau nggak buat script gini ajalah, `nano /root/setup-penny-proxy.sh`
+   ```
+    #!/bin/bash
+    
+    apt update
+    apt install -y apache2
+    
+    a2enmod proxy
+    a2enmod proxy_http
+    a2enmod proxy_balancer
+    a2enmod lbmethod_byrequests
+    a2enmod headers
+    
+    cat > /etc/apache2/sites-available/penny-proxy.conf <<'EOF'
+    <VirtualHost *:80>
+        ServerName www.k59.com
+    
+        ProxyPreserveHost On
+    
+        <Proxy "balancer://vault">
+            BalancerMember "http://10.93.3.4"
+            BalancerMember "http://10.93.3.5"
+            ProxySet lbmethod=byrequests
+        </Proxy>
+    
+        ProxyPass "/" "balancer://vault/"
+        ProxyPassReverse "/" "balancer://vault/"
+    
+        RequestHeader set X-Real-IP "%{REMOTE_ADDR}s"
+    </VirtualHost>
+    EOF
+    
+    a2ensite penny-proxy.conf
+    
+    apache2ctl configtest
+    
+    if [ $? -eq 0 ]; then
+        apache2ctl start
+    fi
+   ```
+   Terus bikin executable
+    ```
+    chmod +x /root/setup-penny-proxy.sh
+    /root/setup-penny-proxy.sh
+    ```
+   Sebelum,  mengaktifkan config, pastikankita tidak merusak Apache karena typo konfigurasi
+   ```
+   apache2ctl configtest
+   ```
+   Kalau hasilnya muncul
+   > Syntax OK
+   Berarti aman dan bisa langsung aktifkan config
+   ```
+   a2ensite penny-proxy.conf
+   ```
+8. Reload apache
+   ```
+   apache2ctl graceful
+   ```
+   Pastikan apache berjalan
+   ```
+   ps aux | grep apache2
+   ```
+   Nanti bakal muncul proses seperti ini yang menandakan apache aktif
+   > /usr/sbin/apache2
+   
+   Buat request www.k59.com menuju 10.93.4.2 ( penny ) dengan host header tetap www.k59.com
+   ```
+   curl -I --resolve www.k59.com:80:10.93.4.2 http://www.k59.com
+   ```
+   <br><img width="693" height="105" alt="image" src="https://github.com/user-attachments/assets/cbf069f8-0ac6-4394-b395-7c1e7991b891" /><br>
+   503 Service Unavailable dari reverse proxy berarti Apache Penny menerima request, tetapi tidak berhasil mendapatkan response dari backend Obladi/Desmond. Case apache selesai, kita fokus ke koneksi Penny menuju backend
+   ```
+   curl -I http://10.93.3.4
+   curl -I http://10.93.3.5
+   ```
+   Case kedua server masih connection failed
+   <br><img width="709" height="107" alt="image" src="https://github.com/user-attachments/assets/07096c5b-0689-40d0-b6a2-9c731ec634bf" /><br>
+   Apache belum terinstall di obladi & desmond, bikin script aja di obladi & desmond
+   ```
+   nano /root/setup-vault.sh
+   ```
+   Isi script obladi
+   ```
+    #!/bin/bash
+    
+    apt update
+    apt install -y apache2
+    
+    mkdir -p /var/www/html/arsip
+    
+    echo "<h1>Vault - Obladi</h1>" > /var/www/html/index.html
+    echo "<h1>Arsip - Obladi</h1>" > /var/www/html/arsip/index.html
+    
+    a2enmod autoindex
+    
+    apache2ctl configtest
+    apache2ctl graceful
+   ```
+   Buat executable
+   ```
+   chmod +x /root/setup-vault.sh
+   /root/setup-vault.sh
+   ```
+   Lalu coba
+   ```
+   curl -I http://localhost
+   ```
+   Kalau dua duanya (obladi & desmond) berhasil, tampilannya:
+   > HTTP/1.1 200 OK
+   > Server: Apache/2.4...
+9. Kalau kedua backend sudah jalan, balik ke Penny buat ngetes
+   ```
+    curl -I http://10.93.3.4
+    curl -I http://10.93.3.5
+    curl -I --resolve www.k59.com:80:10.93.4.2 http://www.k59.com
+   ```
+   <br><img width="692" height="500" alt="image" src="https://github.com/user-attachments/assets/e7afc529-e6d2-4584-b322-25dda497eef6" /><br>
+   Sampai sini sudah membuktikan kalau reverse proxy berhasil, sekarang uji balancer
+   ```
+    for i in {1..10}; do
+        curl -s --resolve www.k59.com:80:10.93.4.2 http://www.k59.com
+        echo
+    done
+   ```
+   <br><img width="490" height="285" alt="image" src="https://github.com/user-attachments/assets/3914fc77-f60f-4a95-adb2-143e0d0f9a98" /><br>
+   Woooowww kereeennn. Ok lanjut config di obladi buat pembuktian membuktikan forwarding Host dan X-Real-IP. Di obladi & desmos
+   ```
+   nano /root/proxy-log.conf
+   ```
+   Isinya
+   ```
+   LogFormat "%h %l %u %t \"%r\" %>s Host=\"%{Host}i\" X-Real-IP=\"%{X-Real-IP}i\"" proxy_test
+   CustomLog /var/log/apache2/proxy_test.log proxy_test
+   ```
+   Masukkan konfigurasi tersebut ke Apache
+   ```
+   cat /root/proxy-log.conf >> /etc/apache2/apache2.conf
+   ```
+   Check
+   ```
+   apache2ctl configtest
+   ```
+   Harus muncul syntax OK, and then
+   ```
+   apache2ctl graceful
+   ```
+   Lakukan hal yang sama di desmond yeah
+   Now back to Penny
+   ```
+   curl -s --resolve www.k59.com:80:10.93.4.2 http://www.k59.com
+   ```
+   Karena Penny menggunakan balancer, request akan masuk ke salah satu dari obladi atau desmond
+   <br><img width="463" height="28" alt="image" src="https://github.com/user-attachments/assets/8b114487-7da7-4282-8c11-57d713be5044" /><br>
+   Config di obladi untuk membuat VirtualHost yang menangkap request port 80 sekaligus mencatat Host dan X-Real-IP.
+    ```
+    cat > /root/000-default-vault.conf <<'EOF'
+    <VirtualHost *:80>
+        ServerName obladi.k59.com
+    
+        DocumentRoot /var/www/html
+    
+        LogFormat "%h %l %u %t \"%r\" %>s Host=\"%{Host}i\" X-Real-IP=\"%{X-Real-IP}i\"" proxy_test
+        CustomLog /var/log/apache2/proxy_test.log proxy_test
+    
+        ErrorLog ${APACHE_LOG_DIR}/error.log
+    </VirtualHost>
+    EOF
+    ```
+    Jadikan konfigurasi ini sebagai default, yang 000-vault-log.conf di-disable dulu
+   ```
+   a2dissite 000-vault-log.conf
+   ```
+   Backup config default lama
+   ```
+   cp /etc/apache2/sites-available/000-default.conf /root/000-default.conf.backup
+   ```
+   Pasang config baru
+   ```
+   cp /root/000-default-vault.conf /etc/apache2/sites-available/000-default.conf
+   a2ensite 000-default.conf
+   apache2ctl configtest
+   apache2ctl graceful
+   ```
+   Tes langsung di obladi
+   ```
+   curl -H "Host: www.k59.com" \
+     -H "X-Real-IP: 10.93.4.2" \
+     http://localhost
+   ```
+   Harus keluar `<h1>Vault - Obladi</h1>`
+   Lalu cek
+   ```
+   tail -n 5 /var/log/apache2/proxy_test.log
+   ```
+   Targetnya kira kira
+   > ::1 - - [30/Sep/2026:...] "GET / HTTP/1.1" 200 ... Host="www.k59.com" X-Real-IP="10.93.4.2"
+   Next tes dari Penny
+   ```
+   curl -H "X-Real-IP: 10.93.4.2" \
+     --resolve www.k59.com:80:10.93.4.2 \
+     http://www.k59.com
+   ```
+   <br><img width="292" height="48" alt="image" src="https://github.com/user-attachments/assets/566dfe3c-4cdf-448c-a3e1-410d4f04c3e4" /><br>  
+   Lalu cek lagi dari obladi
+   ```
+   tail -n 5 /var/log/apache2/proxy_test.log`
+   ```
+   <br><img width="497" height="123" alt="image" src="https://github.com/user-attachments/assets/5ced266e-be1d-4223-8884-8812d2a6ab33" /><br>
+
+   Terget keluaran ini membuktikan bahwa Penny meneruskan Host dan X-Real-IP ke backend.
+   ```
+   Host="www.k59.com"
+   X-Real-IP="10.93.4.2"
+   ```
+   
 ---
 
 ## Soal 12
-*Deskripsi dan pembahasan soal nomor 12.*
+### Perintah soal
+Buat basic Authentication pada node Penny untuk path penny dengan  
+username: prabs   
+password: pakar_pinter_jadi_gob**
+
+### Langkah pengerjaan
+1. Make sure apache jalan
+   ```
+   service apache2 status
+   ```
+   Buat direktori /admin
+   ```
+   mkdir -p /var/www/html/admin
+   ```
+   Kemudian buat halaman sederhana untuk membuktikan authentication berhasil:
+   ```
+   echo "<h1>Admin Area - Penny</h1>" > /var/www/html/admin/index.html
+   ```
+2. Bikin file yg bisa simpan username & password
+   ```
+   apt-get update
+   apt-get install -y apache2-utils
+   htpasswd -c /etc/apache2/.htpasswd prabs
+   ```
+   Masukkan password.
+3. Buat konfigurasi authentication
+   ```
+   nano /var/www/html/admin/.htaccess
+   ```
+   Isi dengan
+   ```
+    AuthType Basic
+    AuthName "Restricted Admin Area"
+    AuthUserFile /etc/apache2/.htpasswd
+    Require valid-user
+   ```
+    `AuthType Basic` memberitahu Apache bahwa /admin menggunakan Basic Authentication  
+    `AuthName "Restricted Admin Area"` memberikan nama/label untuk area yang dilindungi  Biasanya nama ini muncul pada prompt login browser  
+    `AuthUserFile /etc/apache2/.htpasswd` memberitahu Apache letak daftar sun & passwd  
+    `Require valid-user` artinya hanya user yang memiliki credential valid yang boleh masuk  
+4. Pastikan Apache mengizinkan .htaccess karena konfigurasi authentication kita berada di .htaccess.
+   ```
+   nano /etc/apache2/conf-available/admin-auth.conf
+   ```
+   Isinya
+   ```
+   <Directory /var/www/html/admin>
+      AllowOverride AuthConfig
+      Require all granted
+    </Directory>
+   ```
+   Aktifkan
+   ```
+   a2enconf admin-auth.conf
+   apache2ctl configtest
+   apache2ctl graceful
+   ```
+5. Backup di root
+    ```
+    nano /root/soal12.sh
+    ```
+    Isinya
+    ```
+    #!/bin/bash
+    
+    apt-get update
+    apt-get install -y apache2-utils
+    
+    mkdir -p /var/www/html/admin
+    
+    echo "<h1>Admin Area - Penny</h1>" > /var/www/html/admin/index.html
+    
+    htpasswd -bc /etc/apache2/.htpasswd prabs 'pakar_pinter_jadi_gob**'
+    
+    cat > /var/www/html/admin/.htaccess <<'EOF'
+    AuthType Basic
+    AuthName "Restricted Admin Area"
+    AuthUserFile /etc/apache2/.htpasswd
+    Require valid-user
+    EOF
+    
+    cat > /etc/apache2/conf-available/admin-auth.conf <<'EOF'
+    <Directory /var/www/html/admin>
+        AllowOverride AuthConfig
+        Require all granted
+    </Directory>
+    EOF
+    
+    a2enconf admin-auth.conf
+    
+    apache2ctl configtest
+    
+    if [ $? -eq 0 ]; then
+        apache2ctl graceful
+    fi
+    ```
+    Kemudian
+   ```
+   chmod +x /root/soal12.sh
+   /root/soal12.sh
+   ```
+6. Testing verifikasi tanpa ke=redensial, misal lewat node alpha
+   ```
+   curl -i http://penny.k59.com/admin/
+   ```
+   Harusnya keluar hasil
+   > HTTP/1.1 401 Unauthorized
+   Tapi ini masih keluar
+   > curl: (6) Could not resolve host: penny.k59.com (Domain name not found)
+   artinya Alpha belum bisa menerjemahkan penny.k59.com menjadi IP. Jadi kita cek DNS dulu
+   <br>
+   Di alpha, cek `cat /etc/resolv.conf` harus ada nameserver blablabla
+   Perintah `dig +short penny.k59.com` harusnya keluar `10.93.4.2`  
+   Kalau dig belum ada
+   ```
+   apk add bind-tools
+   dig +short penny.k59.com
+   ```
+   Di prab
+   ```
+   ss -lntup | grep :53
+   ps aux | grep named
+   ```
+   Kalau named tidak running
+   ```
+   service named start
+   service named status
+   ss -lntup | grep :53
+   dpkg -l | grep bind9
+   apt-get update
+   DEBIAN_FRONTEND=noninteractive apt-get install -y bind9 bind9-utils dnsutils
+   which named
+   ls -l /etc/init.d/ | grep -E 'bind|named'
+   named-checkconf
+   mkdir -p /etc/bind/k59
+   ```
+   Config ulang, isinya
+   ```
+    cat > /etc/bind/k59/k59.com <<'EOF'
+    $TTL 604800
+    @       IN      SOA     prab.k59.com. root.k59.com. (
+                            2026092803
+                            604800
+                            86400
+                            2419200
+                            604800 )
+    
+    @       IN      NS      prab.k59.com.
+    @       IN      NS      tedd.k59.com.
+    
+    @       IN      A       10.93.4.2
+    
+    prab    IN      A       10.93.3.2
+    tedd    IN      A       10.93.3.3
+    rootkit IN      A       10.93.3.1
+    alpha   IN      A       10.93.1.2
+    beta    IN      A       10.93.1.3
+    gamma   IN      A       10.93.1.4
+    abbey   IN      A       10.93.2.2
+    obladi  IN      A       10.93.3.4
+    desmond IN      A       10.93.3.5
+    oblada  IN      A       10.93.3.6
+    molly   IN      A       10.93.3.7
+    penny   IN      A       10.93.4.2
+    delta   IN      A       10.93.5.2
+    epsilon IN      A       10.93.5.3
+    
+    vault   IN      A       10.93.3.4
+    vault   IN      A       10.93.3.5
+    core    IN      A       10.93.3.6
+    core    IN      A       10.93.3.7
+    
+    www     IN      CNAME   penny
+    static  IN      CNAME   abbey
+    EOF
+   ```
+   And then
+   ```
+   named-checkconf
+   named-checkzone k59.com /etc/bind/k59/k59.com
+   ```
+   Outputnya harus OK, and then
+   ```
+   chown -R bind:bind /etc/bind/k59
+   service named restart
+   service named status
+   ```
+   Harus `bind is running`
+   Anyway, troubleshoot lagi di prab
+   ```
+    cat > /etc/bind/named.conf.local <<'EOF'
+    zone "k59.com" {
+        type master;
+        notify yes;
+        also-notify { 10.93.3.3; };
+        allow-transfer { 10.93.3.3; };
+        file "/etc/bind/k59/k59.com";
+    };
+    EOF
+   ```
+   And then
+   ```
+   named-checkconf
+   named-checkzone k59.com /etc/bind/k59/k59.com
+   service named restart
+   service named status
+   dig @127.0.0.1 penny.k59.com +short
+   ```
+   Target `10.93.4.2`
+   ```
+   dig @127.0.0.1 www.k59.com +short
+   ```
+   Target
+   > penny.k59.com.
+   > 10.93.4.2
+7. Testing di alpha
+   ```
+   dig +short penny.k59.com
+   ```
+   Target `10.93.4.2`, lalu tes admin tanpa kredensial
+   ```
+   curl -i http://penny.k59.com/admin/
+   ```
+   <br><img width="492" height="301" alt="image" src="https://github.com/user-attachments/assets/96e06439-5ec1-42f1-a769-4ec5cf5d4279" /><br>
+
+   Tes dengan usn & pw benar
+   ```
+   curl -i -u 'prabs:pakar_pinter_jadi_gob**' http://penny.k59.com/admin/
+   ```
+   <br><img width="503" height="136" alt="image" src="https://github.com/user-attachments/assets/095f6349-35b7-4435-b9a4-b561ba3361f6" /><br>
+   soal 12 done.  
 
 ---
 
 ## Soal 13
-*Deskripsi dan pembahasan soal nomor 13.*
+### Perintah soal
+HTTP RedirecT
+* **Penny (Apache):** Akses via IP atau `penny.k59.com` di-*redirect* permanen (**HTTP 301**) ke `[www.k59.com](https://www.k59.com)`.
+* **Abbey (Nginx):** Akses via IP atau `abbey.k59.com` di-*redirect* sementara (**HTTP 302**) ke `static.k59.com`.
+  
+### Langkah pengerjaan
+1. Script config di node penny, `nano /root/soal13.sh`
+    ```
+    #!/bin/bash
+    
+    cat > /etc/apache2/sites-available/penny-proxy.conf <<'EOF'
+    <VirtualHost *:80>
+        ServerName www.k59.com
+        ServerAlias penny.k59.com
+    
+        RewriteEngine On
+    
+        RewriteCond %{HTTP_HOST} ^penny\.k59\.com$ [NC]
+        RewriteRule ^/(.*)$ http://www.k59.com/$1 [R=301,L]
+    
+        ProxyPreserveHost On
+    
+        <Proxy "balancer://vault">
+            BalancerMember "http://10.93.3.4"
+            BalancerMember "http://10.93.3.5"
+            ProxySet lbmethod=byrequests
+        </Proxy>
+    
+        ProxyPass "/" "balancer://vault/"
+        ProxyPassReverse "/" "balancer://vault/"
+    
+        RequestHeader set X-Real-IP "%{REMOTE_ADDR}s"
+    </VirtualHost>
+    
+    <VirtualHost *:80>
+        ServerName 10.93.4.2
+    
+        RewriteEngine On
+        RewriteRule ^/(.*)$ http://www.k59.com/$1 [R=301,L]
+    </VirtualHost>
+    EOF
+    
+    a2enmod rewrite
+    
+    apache2ctl configtest
+    
+    if [ $? -eq 0 ]; then
+        apache2ctl graceful
+    fi
+    ```
+    and then
+   ```
+   chmod +x /root/soal13.sh
+   /root/soal13.sh
+   apache2ctl configtest
+   apache2ctl -M | grep rewrite
+   ```
+2. Test redirect penny
+   ```
+   curl -I http://penny.k59.com/
+   ```
+   Target:
+   > HTTP/1.1 301 Moved Permanently
+   > Location: http://www.k59.com/
 
+   Test IP penny
+   ```
+   curl -I http://10.93.4.2/
+   ```
+   Target:
+   > HTTP/1.1 301 Moved Permanently
+   > Location: http://www.k59.com/
+
+   <br><img width="293" height="161" alt="image" src="https://github.com/user-attachments/assets/b9951fcc-c9f0-4631-892f-4b61b419df29" /><br>
+3. Di node abbey
+   ```
+    apt-get update
+    apt-get install -y nginx
+    service nginx start
+    service nginx status
+   ```
+   Buat config di root, `nano /root/soal13.sh`
+   ```
+    #!/bin/bash
+    
+    cat > /etc/nginx/sites-available/abbey-proxy <<'EOF'
+    upstream core_backend {
+        server 10.93.3.6;
+        server 10.93.3.7;
+    }
+    
+    server {
+        listen 80;
+        server_name static.k59.com;
+    
+        location / {
+            proxy_pass http://core_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+    
+    server {
+        listen 80;
+        server_name abbey.k59.com 10.93.2.2;
+    
+        return 302 http://static.k59.com$request_uri;
+    }
+    EOF
+    
+    rm -f /etc/nginx/sites-enabled/default
+    
+    ln -sf /etc/nginx/sites-available/abbey-proxy \
+           /etc/nginx/sites-enabled/abbey-proxy
+    
+    nginx -t
+    
+    if [ $? -eq 0 ]; then
+        service nginx reload
+    fi
+   ```
+   And then
+   ```
+   chmod +x /root/soal13.sh
+   /root/soal13.sh
+   ```
+   Sebelum testing redirect, cek backend Core 10.93.3.6 (Oblada) dan (10.93.3.7) Molly
+   ```
+   curl -I http://10.93.3.6
+   curl -I http://10.93.3.7
+   ```
+   Troubleshoot backend oblada
+   ```
+    apt-get update
+    apt-get install -y nginx
+    service nginx start
+    service nginx status
+    ss -lntup | grep :80
+    ls -l /etc/nginx/sites-available/
+   ```
+   Hasilnya kira kira `Nginx listen 0.0.0.0:80`
+   Ping ping ping
+   ```
+   ping -c 3 10.93.3.6
+   curl -v http://10.93.3.6/
+   ```
+   Harus `Connected to 10.93.3.6`
+   Dari Oblada, cek apakah firewall aktif
+   ```
+   iptables -L -n -v
+   ```
+   Cek `ip addr` oblada, harus muncul `10.93.3.6`
+   Jalankan command ini dari abbey
+   ```
+   ping -c 3 10.93.3.6
+   curl -v http://10.93.3.6/
+   ```
+   Ping harus ada reply, curl harus ada `Connected to 10.93.3.6 (10.93.3.6) port 80`
+   Tes backend core, masih di abbey
+   ```
+   curl -I http://10.93.3.6/
+   ```
+   harus response `http/1.1 200 OK`
+   Now backend molly
+   ```
+    cat > /root/fix-core.sh <<'EOF'
+    #!/bin/bash
+    
+    set -e
+    
+    echo "=== STOP NGINX LAMA ==="
+    nginx -s stop 2>/dev/null || true
+    pkill nginx 2>/dev/null || true
+    
+    echo "=== START PHP-FPM ==="
+    
+    if [ -S /run/php/php8.4-fpm.sock ]; then
+        echo "PHP-FPM socket sudah ada."
+    else
+        php-fpm8.4 -D
+    fi
+    
+    echo "=== CEK PHP-FPM SOCKET ==="
+    ls -l /run/php/php8.4-fpm.sock
+    
+    echo "=== TEST NGINX CONFIG ==="
+    nginx -t
+    
+    echo "=== START NGINX ==="
+    nginx
+    
+    echo "=== CEK PORT 80 ==="
+    ss -lntup | grep ':80'
+    
+    echo
+    echo "=== TEST LOCAL ==="
+    curl -I http://127.0.0.1/
+    
+    echo
+    echo "======================================"
+    echo " CORE MOLLY AKTIF"
+    echo " IP      : 10.93.3.7"
+    echo " NGINX   : PORT 80"
+    echo " PHP-FPM : AKTIF"
+    echo "======================================"
+    EOF
+    
+    chmod +x /root/fix-core.sh
+    /root/fix-core.sh
+    ```
+   Jangan lupa
+   ```
+   curl -I http://10.93.3.7/
+   ```
+   Harus http 200 OK. Tes juga dari abbey
+   ```
+   curl -I http://10.93.3.7/
+   ```
+   Kalau http 200 OK berarti backend Core sudah aman dan kita bisa balik menyelesaikan Soal 13
+4. Masuk ke soal 13, di abbey :
+   ```
+    cat > /root/soal13.sh <<'EOF'
+    #!/bin/bash
+    
+    set -e
+    
+    echo "=== CREATE ABBEY PROXY CONFIG ==="
+    
+    cat > /etc/nginx/sites-available/abbey-proxy <<'NGINX'
+    upstream core_backend {
+        server 10.93.3.6;
+        server 10.93.3.7;
+    }
+    
+    server {
+        listen 80;
+        server_name static.k59.com;
+    
+        location / {
+            proxy_pass http://core_backend;
+    
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+    
+    server {
+        listen 80;
+        server_name abbey.k59.com 10.93.2.2;
+    
+        return 302 http://static.k59.com$request_uri;
+    }
+    NGINX
+    
+    echo "=== ENABLE ABBEY PROXY ==="
+    
+    rm -f /etc/nginx/sites-enabled/default
+    
+    ln -sf /etc/nginx/sites-available/abbey-proxy \
+           /etc/nginx/sites-enabled/abbey-proxy
+    
+    echo "=== TEST NGINX ==="
+    
+    nginx -t
+    
+    echo "=== RELOAD NGINX ==="
+    
+    nginx -s reload 2>/dev/null || nginx
+    
+    echo
+    echo "======================================"
+    echo " ABBEY PROXY SELESAI"
+    echo "======================================"
+    EOF
+    
+    chmod +x /root/soal13.sh
+    /root/soal13.sh
+   ```
+   and then
+   ```
+   ss -lntup | grep ':80'
+   curl -I -H "Host: static.k59.com" http://127.0.0.1/               harus http 200 OK
+   curl -I -H "Host: abbey.k59.com" http://127.0.0.1/
+   ```
+   Harus
+   > HTTP/1.1 302 Found  
+   > Location: http://static.k59.com/
+   
+   Cek IP Abbey
+   ```
+   curl -I http://10.93.2.2/
+   ```
+   <br><img width="410" height="215" alt="image" src="https://github.com/user-attachments/assets/eb249e92-7349-4336-9d0e-b8bc0e4513d8" /><br>
+   Requirement abbey selesai karena sudah redirect 302 dan redirect ke web static
+5. Last, cek penny
+   ```
+   curl -I http://10.93.4.2/
+   curl -I -H "Host: penny.k59.com" http://127.0.0.1/
+   ```
+   <br><img width="396" height="171" alt="image" src="https://github.com/user-attachments/assets/6e74dfd4-3c3d-4a9d-865d-ca85797d5c04" /><br>
+   
 ---
 
 ## Soal 14
-*Deskripsi dan pembahasan soal nomor 14.*
+### Perintah soal
+Memastikan access log di semua server web vault dan core mencatat IP asli client, bukan IP gateway Penny atau Abbey  
+* Abbey nerima request static, lalu diteruskan ke obladi/desmond
+* Penny nerima request vault/core, lalu diteruskan ke oblada/molly
+* Intinya: backend harus tahu IP asli client, bukan IP Abbey/Penny
+Stepnya cukup atur gateway, terus atur backend, terus tes log
+
+### Langkah pengerjaan
+1. Perbaiki obladi & desmond
+   Di obladi  
+    ```
+    a2enmod remoteip
+    nano /etc/apache2/conf-available/real-ip.conf
+    ```
+    Isi dengan
+   ```
+    RemoteIPHeader X-Real-IP
+    RemoteIPInternalProxy 10.93.2.2
+   ```
+   Lalu perintah
+   ```
+    a2enconf real-ip
+    service apache2 restart
+    apache2ctl configtest
+   ```
+   Di desmon juga! ulangi step yang sama sampai `syntax OK`
+   
+3. Perbaiki oblada & molly, oblada dulu
+   ```
+   nano /etc/nginx/nginx.conf
+   ```
+   Di dalam http { isi gini
+   ```
+    set_real_ip_from 10.93.2.2;
+    real_ip_header X-Real-IP;
+   ```
+   Lalu
+   ```
+   nginx -t
+   service nginx reload
+   ```
+   Molly juga digituin ya! TAPI bedanya `set_real_ip_from 10.93.2.2;` jadi `set_real_ip_from 10.93.4.2;`
+4. Tes dari alpha
+   ```
+    curl http://static.k59.com/
+    curl http://vault.k59.com/
+    curl http://core.k59.com/
+   ```
+   lalu cek akses log backend
+   * Untuk obladi & desmond
+     ```
+     tail -n 5 /var/log/apache2/access.log
+     ```
+   <br><img width="566" height="45" alt="image" src="https://github.com/user-attachments/assets/94e39317-6b84-4b64-9377-3aac3709d8f3" /><br>
+   <br><img width="572" height="70" alt="image" src="https://github.com/user-attachments/assets/030992e8-ab56-4d96-84e1-084714dade0d" /><br>
+   
+   * Untuk oblada & molly
+     ```
+     tail -n 5 /var/log/nginx/access.log
+     ```
+   <br><img width="570" height="71" alt="image" src="https://github.com/user-attachments/assets/2bfc6a33-ec15-4bbf-8369-ce32299f9570" /><br>
+   <br><img width="578" height="82" alt="image" src="https://github.com/user-attachments/assets/35c9b57b-0ea1-456c-ac74-050c22cfbd10" /><br>
 
 ---
 
 ## Soal 15
-*Deskripsi dan pembahasan soal nomor 15.*
+### Perintah soal
+### Langkah pengerjaan
 
 ---
 
 ## Soal 16
-*Deskripsi dan pembahasan soal nomor 16.*
+### Perintah soal
+### Langkah pengerjaan
 
 ---
 
 ## Soal 17
-*Deskripsi dan pembahasan soal nomor 17.*
+### Perintah soal
+### Langkah pengerjaan
 
 ---
 
 ## Soal 18
-*Deskripsi dan pembahasan soal nomor 18.*
+### Perintah soal
+### Langkah pengerjaan
 
 ---
 
 ## Soal 19
-*Deskripsi dan pembahasan soal nomor 19.*
+### Perintah soal
+### Langkah pengerjaan
 
 ---
 
 ## Soal 20
-*Deskripsi dan pembahasan soal nomor 20.*
+### Perintah soal
+### Langkah pengerjaan
