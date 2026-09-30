@@ -987,10 +987,135 @@ Masing-masing IP sukses mengembalikan hostname yang sesuai (abbey.k59.com., penn
 2. Buka folder direktori `/arsip/` dan aktifkan fitur autoindex (directory listing) pada konfigurasi Apache sehingga seluruh daftar file di dalamnya dapat ditelusuri langsung dari browser.
 3. Akses pengujian wajib dilakukan melalui hostname, bukan IP address.
 
+### Langkah pengerjaan
+**1. Instalasi dan Konfigurasi Apache di Node Vault (obladi)**
+
+```Bash
+apt-get update
+apt-get install -y apache2
+```
+
+**2. Buat direktori arsip dan isi beberapa file dummy**
+```bash
+mkdir -p /var/www/html/arsip
+echo "Dokumen Rahasia Vault Obladi" > /var/www/html/arsip/rahasia1.txt
+echo "Laporan Keuangan Vault" > /var/www/html/arsip/laporan.pdf
+```
+
+**3. Buat file konfigurasi untuk mengaktifkan autoindex**
+```bash
+cat > /etc/apache2/conf-available/arsip-index.conf <<'EOF'
+<Directory /var/www/html/arsip>
+    Options +Indexes
+    AllowOverride All
+    Require all granted
+</Directory>
+EOF
+
+a2enconf arsip-index.conf
+service apache2 restart
+```
+
+Verifikasi dari Klien (alpha)
+Uji akses direktori arsip menggunakan hostname lewat curl:
+
+```Bash
+curl http://obladi.k59.com/arsip/
+curl http://vault.k59.com/arsip/
+```
+
+Hasil: Menampilkan halaman HTML Index of /arsip yang memuat daftar berkas laporan.pdf dan rahasia1.txt secara interaktif.
+
+<img width="1143" height="842" alt="WhatsApp Image 2026-09-29 at 18 54 47" src="https://github.com/user-attachments/assets/757b41d8-78b2-4965-83c0-420d635f42ad" />
+
 ---
 
 ## Soal 10
-*Deskripsi dan pembahasan soal nomor 10.*
+### Perintah soal
+1. Jalankan layanan web dinamis (PHP-FPM) pada hostname di node area core (menggunakan Nginx).
+2. Buat sebuah aplikasi sederhana yang memuat halaman beranda dan halaman profil.
+3. Terapkan aturan rewrite pada server sehingga akses ke /profil dapat berfungsi dengan URL bersih (tanpa akhiran .php).
+4. Akses pengujian wajib dilakukan melalui hostname.
+
+### Langkah pengerjaan
+**1. Instalasi Nginx & PHP-FPM di Node Core (oblada)**
+
+```Bash
+apt-get update
+apt-get install -y nginx php8.4-fpm
+```
+
+**2. Buat folder aplikasi web core**
+```bash
+mkdir -p /var/www/html/core
+```
+
+**Buat halaman beranda (index.php)**
+```bash
+cat > /var/www/html/core/index.php <<'EOF'
+<!DOCTYPE html>
+<html>
+<head><title>Beranda Core</title></head>
+<body>
+    <h1>Selamat Datang di Halaman Beranda Core!</h1>
+    <p><a href="/profil">Ke Halaman Profil (Clean URL)</a></p>
+</body>
+</html>
+EOF
+```
+**Buat halaman profil (profil.php)**
+```bash
+cat > /var/www/html/core/profil.php <<'EOF'
+<!DOCTYPE html>
+<html>
+<head><title>Profil Kelompok</title></head>
+<body>
+    <h1>Halaman Profil Kelompok K-59</h1>
+    <p>Ini adalah halaman profil dengan URL bersih (tanpa ekstensi .php).</p>
+    <p><a href="/">Kembali ke Beranda</a></p>
+</body>
+</html>
+EOF
+```
+**Konfigurasi Virtual Host Nginx dengan aturan rewrite Clean URL**
+```bash
+cat > /etc/nginx/sites-available/core <<'EOF'
+server {
+    listen 80;
+    server_name core.k59.com oblada.k59.com molly.k59.com;
+
+    root /var/www/html/core;
+    index index.php index.html index.htm;
+
+    location / {
+        try_files $uri $uri/ $uri.php?$args;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;
+    }
+}
+EOF
+
+ln -s /etc/nginx/sites-available/core /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
+service php8.4-fpm start
+service nginx restart
+```
+**3. Verifikasi dari Klien (alpha / tedd)**
+Uji akses halaman beranda dan halaman profil ber-URL bersih via hostname:
+
+```Bash
+curl http://oblada.k59.com/
+curl http://core.k59.com/
+curl http://oblada.k59.com/profil
+curl http://core.k59.com/profil
+```
+Hasil: Beranda menampilkan teks sambutan, dan /profil berhasil memuat halaman profil meskipun diakses tanpa ekstensi .php.
+
+<img width="1113" height="828" alt="image" src="https://github.com/user-attachments/assets/6413ad8e-07ee-4779-b3b0-e1231779e14e" />
+
 
 ---
 
