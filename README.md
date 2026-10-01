@@ -43,8 +43,7 @@ Prefix : 10.93.x.x
 4. Seluruh entitas tetap harus diberi IP  
 
 Switch2 dan Switch3 tidak langsung tersambung ke rootkit. Mereka menggantung di bawah Switch1. Artinya prab, tedd, obladi, desmond, oblada, dan molly berada di satu kompleks yang sama (satu subnet), karena switch yang disambung ke switch lain hanya memperpanjang jalan, tidak membuat kompleks baru. Hanya router yang bisa memisahkan kompleks  
-<br><img width="1307" height="843" alt="image" src="https://github.com/user-attachments/assets/c049f2f9-6f78-4568-8f39-e1fec0ee2f05" />
-<br>  
+<br><img width="1415" height="883" alt="image" src="https://github.com/user-attachments/assets/277bf20a-d399-4b1f-853e-dc51fc3e3400" /><br>  
 
 ### Pemetaan perangkat & port
 | Perangkat A | Port A | Perangkat B | Port B | Keterangan Perangkat B |
