@@ -38,7 +38,7 @@ Prefix : 10.93.x.x
 ## Soal 1
 ### Perintah soal:  
 1. Router rootkit harus tersambung ke lima switch. Di topologi, rootkit terhubung ke Switch1, Switch4, Switch5, Switch6, dan Switch7, ditambah satu kabel lagi ke NAT  
-2. Setiap node diberi alamat IP sesuai switch tempat dia tersambung, prefix kelompokmu: 10.93.x.x.  
+2. Setiap node diberi alamat IP sesuai switch tempat dia tersambung, prefix kelompok: 10.93.x.x.  
 3. Setiap node non-router diberi default gateway, yaitu IP rootkit di jaringan tempat node itu berada.  
 4. Seluruh entitas tetap harus diberi IP  
 
