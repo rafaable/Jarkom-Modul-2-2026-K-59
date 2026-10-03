@@ -1520,6 +1520,7 @@ password: pakar_pinter_jadi_gob**
    ```
    Harusnya keluar hasil
    > HTTP/1.1 401 Unauthorized
+      
    Tapi ini masih keluar
    > curl: (6) Could not resolve host: penny.k59.com (Domain name not found)
    artinya Alpha belum bisa menerjemahkan penny.k59.com menjadi IP. Jadi kita cek DNS dulu
