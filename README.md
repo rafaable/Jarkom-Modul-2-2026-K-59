@@ -179,14 +179,14 @@ Harus sesuai dengan IP Gateway masing masing, beres.
 Alamat 10.93.x.x itu alamat privat, semacam nomor rumah di dalam kompleks tertutup. Kalau alpha mengirim surat ke luar dengan alamat pengirim 10.93.1.2, balasannya tidak akan pernah bisa kembali karena kantor pos di luar tidak tahu alamat itu ada di mana. Solusinya bisa melalui IP forwarding, atau NAT (MASQUERADE) -> kirim atas nama gateway, rootkit mengganti alamat pengirimnya dengan alamat rootkit sendiri (192.168.122.x), yang dikenal dunia luar. Rootkit juga mencatat "surat ini sebenarnya punya alpha"
 
 ### Langkah pengerjaan
-1. Tambahkan perintah NAT ke network config rootkit
+1. X Tambahkan perintah NAT ke network config rootkit
    ```
    auto eth0
    iface eth0 inet dhcp
        up echo 1 > /proc/sys/net/ipv4/ip_forward
        up iptables -t nat -A POSTROUTING -s 10.93.0.0/16 -o eth0 -j MASQUERADE
    ```
-2. Simpan juga sebagai script di /root
+2. X Simpan juga sebagai script di /root
    ```
    cat > /root/soal2.sh <<'EOF'
    #!/bin/bash
@@ -195,8 +195,8 @@ Alamat 10.93.x.x itu alamat privat, semacam nomor rumah di dalam kompleks tertut
    EOF
    chmod +x /root/soal2.sh
    ```
-3. Jangan lupa stop, lalu start biar config barunya keimplement!
-4. Di rootkit, cek dua hal:
+3. X Jangan lupa stop, lalu start biar config barunya keimplement!
+4. X Di rootkit, cek dua hal:
    ```
    cat /proc/sys/net/ipv4/ip_forward
    iptables -t nat -L POSTROUTING -n -v
@@ -290,7 +290,7 @@ Alamat 10.93.x.x itu alamat privat, semacam nomor rumah di dalam kompleks tertut
 4. Verifikasi routing lintas subnet
    Dari alpha, ping satu perwakilan setiap subnet lain:
    ```
-   for ip in 10.93.2.2 10.93.3.2 10.93.3.7 10.93.4.2 10.93.5.2; do ping -c 1 -W 1 $ip > /dev/null && echo "$ip OK" || echo "$ip GAGAL" done
+   for ip in 10.93.2.2 10.93.3.2 10.93.3.7 10.93.4.2 10.93.5.2; do ping -c 1 -W 1 $ip > /dev/null && echo "$ip OK" || echo "$ip GAGAL"; done
    ``` 
    Untuk bukti bahwa jalurnya memang lewat rootkit, jalankan di alpha:  
    ```
@@ -309,7 +309,7 @@ Alamat 10.93.x.x itu alamat privat, semacam nomor rumah di dalam kompleks tertut
 
 ## Soal 4
 ### Perintah soal
-Penataan resolver setelah DNS . Domain kelompokmu: k59.com. DNS tidak membedakan huruf besar dan kecil, jadi K59.com dan k59.com sama saja. Kita pakai huruf kecil supaya rapi.  
+Penataan resolver setelah DNS . Domain kelompok: k59.com. DNS tidak membedakan huruf besar dan kecil, jadi K59.com dan k59.com sama saja. Kita pakai huruf kecil supaya rapi.  
 1. Konfigurasi di prab (ns1 / Master)  
    Buat zona `k59.com` yang authoritative, dengan SOA menunjuk ke `prab.k59.com`.
 2. Tambahkan NS record untuk:
@@ -360,17 +360,17 @@ prab berperan sebagai master, sedangkan tedd sebagai slave yang memiliki salinan
    ```
     #!/bin/bash
     apt-get update
-    apt-get install -y bind9 dnsutils
-    ln -sf /etc/init.d/named /etc/init.d/bind9
+    apt-get install -y bind9 dnsutils             # instal bind9 & alat buat uji DNS terus auto jawab yes
+    ln -sf /etc/init.d/named /etc/init.d/bind9    # service named juga bisa dipanggil dengan nama bind9
     
     # Opsi global: forwarders dan izin query
     cat > /etc/bind/named.conf.options <<'EOF'
     options {
-        directory "/var/cache/bind";
-        forwarders { 192.168.122.1; };
-        dnssec-validation no;
-        allow-query { any; };
-        allow-recursion { any; };
+        directory "/var/cache/bind";     
+        forwarders { 192.168.122.1; };   
+        dnssec-validation no;           
+        allow-query { any; };            
+        allow-recursion { any; };        
         auth-nxdomain no;
         listen-on-v6 { any; };
     };
@@ -390,11 +390,11 @@ prab berperan sebagai master, sedangkan tedd sebagai slave yang memiliki salinan
     # Isi zona (buku telepon)
     mkdir -p /etc/bind/k59
     cat > /etc/bind/k59/k59.com <<'EOF'
-    $TTL    604800
+    $TTL    43200
     @       IN      SOA     prab.k59.com. root.k59.com. (
                             2026092801 ; Serial
-                            604800     ; Refresh
-                            86400      ; Retry
+                            43200      ; Refresh
+                            3600       ; Retry
                             2419200    ; Expire
                             604800 )   ; Negative Cache TTL
     ;
@@ -458,7 +458,7 @@ prab berperan sebagai master, sedangkan tedd sebagai slave yang memiliki salinan
    Total 0 bjirr, bentar troubleshoot. Harusnya ada file k59.com. Kalau belum ada, restart BIND di prab supaya dia kirim notify lagi (service named restart di prab), tunggu beberapa detik, terus cek lagi.
    Cara cek apakah bind-nya running
    ```
-   root@tedd:~# service named status
+   service named status
    ```
    > bind is running.
    Diagnosis di prab
