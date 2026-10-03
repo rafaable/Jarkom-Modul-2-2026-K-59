@@ -20,14 +20,18 @@
 * [Soal 10](#soal-10)
 * [Soal 11](#soal-11)
 * [Soal 12](#soal-12)
+* [Soal 12 (Revisi)](#soal-12-revisi)
 * [Soal 13](#soal-13)
 * [Soal 14](#soal-14)
 * [Soal 15](#soal-15)
+* [Soal 15 (Revisi)](#soal-15-revisi)
 * [Soal 16](#soal-16)
 * [Soal 17](#soal-17)
+* [Soal 17 (Revisi)](#soal-17-revisi)
 * [Soal 18](#soal-18)
 * [Soal 19](#soal-19)
 * [Soal 20](#soal-20)
+* [Revisi](#revisi)
 
 ---
 Prefix : 10.93.x.x
@@ -1523,21 +1527,22 @@ password: pakar_pinter_jadi_gob**
       
    Tapi ini masih keluar
    > curl: (6) Could not resolve host: penny.k59.com (Domain name not found)
+     
    artinya Alpha belum bisa menerjemahkan penny.k59.com menjadi IP. Jadi kita cek DNS dulu
-   <br>
-   Di alpha, cek `cat /etc/resolv.conf` harus ada nameserver blablabla
-   Perintah `dig +short penny.k59.com` harusnya keluar `10.93.4.2`  
-   Kalau dig belum ada
+   <br>  
+   Di alpha, cek `cat /etc/resolv.conf` harus ada nameserver blablabla  
+   Perintah `dig +short penny.k59.com` harusnya keluar `10.93.4.2`   
+   Kalau dig belum ada  
    ```
    apk add bind-tools
    dig +short penny.k59.com
    ```
-   Di prab
+   Di prab  
    ```
    ss -lntup | grep :53
    ps aux | grep named
    ```
-   Kalau named tidak running
+   Kalau named tidak running  
    ```
    service named start
    service named status
@@ -1550,7 +1555,7 @@ password: pakar_pinter_jadi_gob**
    named-checkconf
    mkdir -p /etc/bind/k59
    ```
-   Config ulang, isinya
+   Config ulang, isinya  
    ```
     cat > /etc/bind/k59/k59.com <<'EOF'
     $TTL 604800
@@ -1590,19 +1595,19 @@ password: pakar_pinter_jadi_gob**
     static  IN      CNAME   abbey
     EOF
    ```
-   And then
+   And then  
    ```
    named-checkconf
    named-checkzone k59.com /etc/bind/k59/k59.com
    ```
-   Outputnya harus OK, and then
+   Outputnya harus OK, and then  
    ```
    chown -R bind:bind /etc/bind/k59
    service named restart
    service named status
    ```
-   Harus `bind is running`
-   Anyway, troubleshoot lagi di prab
+   Harus `bind is running`  
+   Anyway, troubleshoot lagi di prab  
    ```
     cat > /etc/bind/named.conf.local <<'EOF'
     zone "k59.com" {
@@ -1614,7 +1619,7 @@ password: pakar_pinter_jadi_gob**
     };
     EOF
    ```
-   And then
+   And then  
    ```
    named-checkconf
    named-checkzone k59.com /etc/bind/k59/k59.com
@@ -1622,29 +1627,30 @@ password: pakar_pinter_jadi_gob**
    service named status
    dig @127.0.0.1 penny.k59.com +short
    ```
-   Target `10.93.4.2`
+   Target `10.93.4.2`  
    ```
    dig @127.0.0.1 www.k59.com +short
    ```
-   Target
+   Target  
    > penny.k59.com.
    > 10.93.4.2
-7. Testing di alpha
+     
+7. Testing di alpha  
    ```
    dig +short penny.k59.com
    ```
-   Target `10.93.4.2`, lalu tes admin tanpa kredensial
+   Target `10.93.4.2`, lalu tes admin tanpa kredensial  
    ```
    curl -i http://penny.k59.com/admin/
    ```
    <br><img width="492" height="301" alt="image" src="https://github.com/user-attachments/assets/96e06439-5ec1-42f1-a769-4ec5cf5d4279" /><br>
 
-   Tes dengan usn & pw benar
+   Tes dengan usn & pw benar  
    ```
    curl -i -u 'prabs:pakar_pinter_jadi_gob**' http://penny.k59.com/admin/
    ```
    <br><img width="503" height="136" alt="image" src="https://github.com/user-attachments/assets/095f6349-35b7-4435-b9a4-b561ba3361f6" /><br>
-   soal 12 done.  
+   soal 12 done.    
 
 ---
 
@@ -1813,7 +1819,7 @@ HTTP RedirecT
    ```
    curl -I http://10.93.3.6/
    ```
-   harus response `http/1.1 200 OK`
+   harus response `http/1.1 200 OK`  
    Now backend molly
    ```
     cat > /root/fix-core.sh <<'EOF'
@@ -2381,3 +2387,763 @@ Pengujian performa menggunakan ApacheBench menunjukkan bahwa kedua server berhas
 ## Soal 20
 ### Perintah soal
 ### Langkah pengerjaan
+
+---
+
+## Soal 12 (Revisi)
+### Perintah soal
+Buat basic Authentication pada node Penny untuk path `/admin` dengan  
+username: `prabs`  
+password: `pakar_pinter_jadi_gob**`
+
+### Konsep singkat
+**Basic Authentication** itu seperti satpam di depan sebuah ruangan. Setiap pengunjung yang masuk ke path `/admin` ditanya username dan password. Kalau cocok dengan daftar, boleh masuk (`200 OK`). Kalau tidak, ditolak (`401 Unauthorized`).
+
+Ada tiga bagian yang saling terhubung:
+| Bagian | Fungsinya | Lokasi |
+| --- | --- | --- |
+| Daftar username & password | Buku tamu yang dipegang satpam. Password disimpan dalam bentuk hash, bukan teks asli | `/etc/apache2/.htpasswd` |
+| `.htaccess` | Aturan "folder ini dijaga, cek buku tamu yang mana" | `/var/www/html/admin/.htaccess` |
+| `AllowOverride AuthConfig` | Izin supaya Apache mau membaca aturan di `.htaccess`. Tanpa izin ini, `.htaccess` diabaikan dan folder tidak terkunci | `/etc/apache2/conf-available/admin-auth.conf` |
+
+> **PENTING:** semua langkah soal 12 dikerjakan di **penny**, bukan di prab. Cek prompt harus `root@penny:~#` sebelum mengetik apa pun.
+
+### Langkah pengerjaan
+1. Pastikan Apache jalan di penny
+   ```
+   service apache2 status
+   ```
+   Harus muncul tanda Apache sedang berjalan. Kalau belum jalan: `apache2ctl start`
+
+   > **Error 1 (salah node):** saat pertama dikerjakan, perintah dijalankan di **prab**, bukan penny. Hasilnya:
+   > ```
+   > root@prab:~# service apache2 status
+   > grep: /etc/init.d/apache2: No such file or directory
+   > apache2: unrecognized service
+   > ```
+   > **Penyebab:** prab adalah server DNS (BIND), paket `apache2` tidak pernah terinstal di sana, jadi skrip service-nya tidak ada.  
+   > **Perbaikan:** pindah ke console penny, lalu ulangi dari langkah 1.
+
+2. Buat folder `/admin` dan halaman pembuktian
+   ```
+   mkdir -p /var/www/html/admin
+   echo "<h1>Admin Area - Penny</h1>" > /var/www/html/admin/index.html
+   ```
+   `mkdir -p` membuat folder, dan tidak error kalau foldernya sudah ada.
+
+   > **Error 2 (salah node):**
+   > ```
+   > root@prab:~# echo "<h1>Admin Area - Penny</h1>" > /var/www/html/admin/index.html
+   > bash: /var/www/html/admin/index.html: No such file or directory
+   > ```
+   > **Penyebab:** folder `/var/www/html/` dibuat oleh paket `apache2`. Di prab paketnya tidak ada, jadi folder induknya pun tidak ada. Selain itu langkah `mkdir` belum dijalankan.  
+   > **Perbaikan:** jalankan di penny, dan `mkdir -p` dulu sebelum `echo`.
+
+3. Buat file daftar username & password
+   ```
+   apt-get update
+   apt-get install -y apache2-utils
+   htpasswd -c /etc/apache2/.htpasswd prabs
+   ```
+   Saat diminta, ketik password `pakar_pinter_jadi_gob**` (dua kali, tidak tampil di layar).  
+   `htpasswd` adalah alat pembuat file daftar user. Opsi `-c` artinya *create* (buat file baru). Pakai `-c` **hanya sekali**. Kalau dipakai lagi untuk menambah user, seluruh isi file lama ditimpa.
+
+   > **Error 3 (salah node):**
+   > ```
+   > root@prab:~# htpasswd -c /etc/apache2/.htpasswd prabs
+   > htpasswd: cannot create file /etc/apache2/.htpasswd
+   > ```
+   > **Penyebab:** `apache2-utils` sudah terinstal (makanya perintah `htpasswd` bisa dijalankan), tetapi paket itu hanya berisi alat bantu. Folder `/etc/apache2/` dibuat oleh paket `apache2`, yang tidak ada di prab. `htpasswd` tidak bisa membuat file di folder yang tidak ada.  
+   > **Perbaikan:** jalankan di penny, karena `apache2` sudah terinstal di sana sejak soal 11.
+
+4. Buat konfigurasi authentication di `.htaccess`
+   ```
+   nano /var/www/html/admin/.htaccess
+   ```
+   Isi dengan:
+   ```
+   AuthType Basic
+   AuthName "Restricted Admin Area"
+   AuthUserFile /etc/apache2/.htpasswd
+   Require valid-user
+   ```
+   | Baris | Fungsinya |
+   | --- | --- |
+   | `AuthType Basic` | Memberitahu Apache bahwa folder ini memakai Basic Authentication |
+   | `AuthName "Restricted Admin Area"` | Label area yang dilindungi. Teks ini muncul di kotak login browser |
+   | `AuthUserFile /etc/apache2/.htpasswd` | Letak file daftar username & password |
+   | `Require valid-user` | Hanya user yang kredensialnya ada di daftar yang boleh masuk |
+
+5. Izinkan Apache membaca `.htaccess`
+   ```
+   nano /etc/apache2/conf-available/admin-auth.conf
+   ```
+   Isi dengan:
+   ```
+   <Directory /var/www/html/admin>
+       AllowOverride AuthConfig
+       Require all granted
+   </Directory>
+   ```
+   `AllowOverride AuthConfig` mengizinkan `.htaccess` mengatur autentikasi, dan hanya autentikasi. Aktifkan:
+   ```
+   a2enconf admin-auth.conf
+   apache2ctl configtest
+   apache2ctl graceful
+   ```
+   `configtest` harus menampilkan `Syntax OK` sebelum `graceful` (reload tanpa memutus koneksi).
+
+6. Simpan semua langkah sebagai script backup
+   ```
+   nano /root/soal12.sh
+   ```
+   Isinya:
+   ```
+   #!/bin/bash
+
+   apt-get update
+   apt-get install -y apache2-utils
+
+   mkdir -p /var/www/html/admin
+
+   echo "<h1>Admin Area - Penny</h1>" > /var/www/html/admin/index.html
+
+   htpasswd -bc /etc/apache2/.htpasswd prabs 'pakar_pinter_jadi_gob**'
+
+   cat > /var/www/html/admin/.htaccess <<'EOF'
+   AuthType Basic
+   AuthName "Restricted Admin Area"
+   AuthUserFile /etc/apache2/.htpasswd
+   Require valid-user
+   EOF
+
+   cat > /etc/apache2/conf-available/admin-auth.conf <<'EOF'
+   <Directory /var/www/html/admin>
+       AllowOverride AuthConfig
+       Require all granted
+   </Directory>
+   EOF
+
+   a2enconf admin-auth.conf
+
+   apache2ctl configtest
+
+   if [ $? -eq 0 ]; then
+       apache2ctl graceful
+   fi
+   ```
+   Lalu jalankan:
+   ```
+   chmod +x /root/soal12.sh
+   /root/soal12.sh
+   ```
+   Di script, `htpasswd -bc` memasukkan password langsung di perintah (`-b` = *batch*), jadi tidak ada prompt. Password ditulis dalam tanda kutip tunggal `'...'` supaya karakter `**` dibaca sebagai teks biasa oleh bash, bukan sebagai wildcard.  
+   Pastikan baris `EOF` di script **rata kiri** (tanpa spasi di depan), kalau tidak heredoc tidak berhenti dan isi perintah berikutnya ikut tertulis ke file.
+
+7. Pastikan klien bisa menerjemahkan `penny.k59.com` (cek DNS dulu)
+   Di alpha:
+   ```
+   cat /etc/resolv.conf
+   dig +short penny.k59.com
+   ```
+   Harus keluar `10.93.4.2`. Kalau `dig` belum ada: `apk add bind-tools`
+
+   > **Error 4 (DNS belum jalan):** saat tes pertama dari alpha:
+   > ```
+   > curl: (6) Could not resolve host: penny.k59.com (Domain name not found)
+   > ```
+   > **Penyebab:** alpha tidak bisa menerjemahkan nama `penny.k59.com` menjadi IP. Ini bukan masalah autentikasi. Penyebabnya ada di prab: BIND (`named`) mati atau belum terinstal, sehingga tidak ada yang menjawab pertanyaan DNS.  
+   > **Perbaikan (di prab):**
+   > ```
+   > service named start
+   > service named status
+   > ss -lntup | grep :53
+   > ```
+   > Kalau `named` tidak ada sama sekali:
+   > ```
+   > apt-get update
+   > DEBIAN_FRONTEND=noninteractive apt-get install -y bind9 bind9-utils dnsutils
+   > which named
+   > named-checkconf
+   > ```
+   > Lalu tulis ulang zona `/etc/bind/k59/k59.com` (dengan serial yang naik) dan `/etc/bind/named.conf.local`, cek, dan restart:
+   > ```
+   > named-checkzone k59.com /etc/bind/k59/k59.com
+   > chown -R bind:bind /etc/bind/k59
+   > service named restart
+   > dig @127.0.0.1 penny.k59.com +short
+   > ```
+   > Target: `10.93.4.2`. Setelah itu `dig +short penny.k59.com` dari alpha harus keluar `10.93.4.2`.
+
+8. Pengujian dari alpha
+
+   **Tanpa kredensial**, harus ditolak:
+   ```
+   curl -i http://penny.k59.com/admin/
+   ```
+   Target:
+   > HTTP/1.1 401 Unauthorized  
+   > WWW-Authenticate: Basic realm="Restricted Admin Area"
+
+   **Dengan kredensial benar**, harus diterima:
+   ```
+   curl -i -u 'prabs:pakar_pinter_jadi_gob**' http://penny.k59.com/admin/
+   ```
+   Target:
+   > HTTP/1.1 200 OK  
+   > `<h1>Admin Area - Penny</h1>`
+
+   `-u 'user:password'` membuat curl mengirim kredensial Basic Authentication. Tanda kutip tunggal menjaga `**` tetap teks biasa.
+
+   <br><img width="1600" height="900" alt="image" src="https://github.com/user-attachments/assets/3818743d-007b-41bd-9158-580852042cf4" /><br>
+   <br><img width="1600" height="900" alt="image" src="https://github.com/user-attachments/assets/4962d124-6315-4e86-8230-1cc05e6bb278" /><br>
+
+   Soal 12 selesai.
+
+### Rangkuman error & perbaikan
+| No | Gejala | Penyebab | Perbaikan |
+| --- | --- | --- | --- |
+| 1 | `service apache2 status`: `No such file or directory`, `unrecognized service` | Dikerjakan di prab (server DNS), Apache tidak terinstal di sana | Pindah ke penny |
+| 2 | `echo ... > /var/www/html/admin/index.html`: `No such file or directory` | Folder `/var/www/html` tidak ada di prab, dan `mkdir` belum dijalankan | Kerjakan di penny, `mkdir -p` dulu |
+| 3 | `htpasswd: cannot create file /etc/apache2/.htpasswd` | Folder `/etc/apache2` tidak ada di prab. `apache2-utils` hanya berisi alat, folder dibuat oleh paket `apache2` | Kerjakan di penny |
+| 4 | `curl: (6) Could not resolve host: penny.k59.com` | BIND di prab mati atau belum terinstal, DNS tidak menjawab | Nyalakan atau instal BIND di prab, perbaiki zona, tes dengan `dig` |
+
+### Pelajaran
+* Error 1 sampai 3 punya akar masalah yang sama: **salah node**. Tiap node di GNS3 adalah komputer terpisah, jadi paket dan folder di satu node tidak ada di node lain. Biasakan melihat prompt (`root@namanode`) sebelum menjalankan perintah.
+* Error `No such file or directory` biasanya berarti folder induknya tidak ada, dan folder induk itu sering dibuat oleh paket yang belum terinstal.
+* Kalau `curl` gagal dengan `Could not resolve host`, masalahnya di DNS, bukan di web server. Tes dengan `dig` dulu sebelum menyalahkan Apache.
+
+### Catatan
+Pengujian soal 12 dilakukan sebelum soal 13. Setelah soal 13, `penny.k59.com` di-redirect permanen (301) ke `www.k59.com`, jadi kalau tes `curl http://penny.k59.com/admin/` diulang setelahnya, hasilnya bisa berupa redirect, bukan `401`. Bukti `401` dan `200` di atas tetap valid karena diambil sebelum aturan redirect dipasang.
+
+---
+
+## Soal 15 (Revisi)
+### Perintah soal
+Buat dua path website tambahan:
+* Di **Penny (Apache)**: path `/eternal` diarahkan ke folder backend `/var/www/eternal`, dan **PHP harus bisa dirender**.
+* Di **Abbey (Nginx)**: path `/orion` diarahkan ke folder `/var/www/orion`, tetapi **hanya file statis**, tidak memakai PHP.
+
+### Konsep singkat
+Apache atau Nginx bisa melayani sebuah path dengan dua cara:
+1. **Ambil file dari folder sendiri.** Di Apache dilakukan oleh `Alias`, di Nginx oleh `root`.
+2. **Teruskan ke server lain (proxy).** Di Apache dilakukan oleh `ProxyPass`, di Nginx oleh `proxy_pass`.
+
+Penny dan Abbey sudah menjadi reverse proxy (soal 11 dan 13), jadi secara bawaan semua path mereka diteruskan ke backend. Supaya `/eternal` dan `/orion` dilayani oleh Penny dan Abbey sendiri, dua path itu harus **dikecualikan** dari proxy.
+
+Untuk PHP: Apache hanya bisa mengirim file. Yang menjalankan kode PHP adalah **PHP-FPM**. Apache menyerahkan file `.php` ke PHP-FPM lewat modul `proxy_fcgi` dan sebuah socket, lalu mengirim hasil HTML-nya ke pengunjung. Di Abbey PHP-FPM sengaja tidak dipasang karena soal meminta static only.
+
+> **PENTING:** Bagian 1 dikerjakan di **penny**, Bagian 2 di **abbey**. Cek prompt (`root@penny` atau `root@abbey`) sebelum mengetik perintah.
+
+---
+
+## Bagian 1: Penny (`/eternal`, Apache + PHP)
+
+### Langkah pengerjaan
+1. Install dan nyalakan PHP-FPM
+   ```
+   apt-get update
+   apt-get install -y php8.4-fpm
+   service php8.4-fpm start
+   ls -l /run/php/php8.4-fpm.sock
+   ```
+   * `php8.4-fpm` dipakai agar versinya sama dengan soal 10.
+   * File `.sock` adalah "pintu telepon" internal antara Apache dan PHP-FPM. Kalau filenya muncul, PHP-FPM sudah hidup.
+   * Tidak memakai `apt-get install php` biasa, karena paket itu menarik `libapache2-mod-php` yang bisa bentrok dengan `proxy_fcgi`.
+
+2. Buat folder backend dan halaman PHP untuk tes
+   ```
+   mkdir -p /var/www/eternal
+   cat > /var/www/eternal/index.php <<'EOF'
+   <?php
+   echo "<h1>Eternal</h1>";
+   echo "<p>PHP rendering berhasil.</p>";
+   ?>
+   EOF
+   ```
+
+3. Aktifkan modul Apache
+   ```
+   a2enmod proxy proxy_fcgi setenvif rewrite
+   ```
+   `proxy_fcgi` menghubungkan Apache ke PHP-FPM, dan `rewrite` dipakai oleh redirect soal 13.
+
+4. Buat aturan PHP khusus folder eternal
+   ```
+   cat > /etc/apache2/conf-available/eternal-php.conf <<'EOF'
+   <Directory /var/www/eternal>
+       Require all granted
+       DirectoryIndex index.php index.html
+       <FilesMatch "\.php$">
+           SetHandler "proxy:unix:/run/php/php8.4-fpm.sock|fcgi://localhost/"
+       </FilesMatch>
+   </Directory>
+   EOF
+   a2enconf eternal-php
+   ```
+   | Baris | Fungsinya |
+   | --- | --- |
+   | `<Directory /var/www/eternal>` | Aturan hanya berlaku untuk folder ini |
+   | `Require all granted` | Semua orang boleh membuka folder. Tanpa ini hasilnya 403 |
+   | `DirectoryIndex index.php index.html` | Kalau yang dibuka folder, file pertama yang dicari adalah `index.php`, lalu `index.html` |
+   | `<FilesMatch "\.php$">` | Berlaku hanya untuk file berakhiran `.php` |
+   | `SetHandler "proxy:unix:...\|fcgi://localhost/"` | File `.php` diserahkan ke PHP-FPM lewat socket |
+
+5. Gabungkan `/eternal` ke `penny-proxy.conf`
+   Nonaktifkan vhost terpisah (kalau sebelumnya sempat dibuat), lalu tulis ulang `penny-proxy.conf`. Isinya sudah menggabungkan soal 11, 13, dan 15:
+   ```
+   a2dissite eternal.conf
+
+   cat > /etc/apache2/sites-available/penny-proxy.conf <<'EOF'
+   <VirtualHost *:80>
+       ServerName www.k59.com
+       ServerAlias penny.k59.com
+
+       RewriteEngine On
+       RewriteCond %{HTTP_HOST} ^penny\.k59\.com$ [NC]
+       RewriteCond %{REQUEST_URI} !^/eternal
+       RewriteRule ^/(.*)$ http://www.k59.com/$1 [R=301,L]
+
+       Alias /eternal /var/www/eternal
+
+       ProxyPreserveHost On
+       ProxyPass /eternal !
+
+       <Proxy "balancer://vault">
+           BalancerMember "http://10.93.3.4"
+           BalancerMember "http://10.93.3.5"
+           ProxySet lbmethod=byrequests
+       </Proxy>
+
+       ProxyPass "/" "balancer://vault/"
+       ProxyPassReverse "/" "balancer://vault/"
+
+       RequestHeader set X-Real-IP "%{REMOTE_ADDR}s"
+   </VirtualHost>
+
+   <VirtualHost *:80>
+       ServerName 10.93.4.2
+       RewriteEngine On
+       RewriteRule ^/(.*)$ http://www.k59.com/$1 [R=301,L]
+   </VirtualHost>
+   EOF
+   ```
+   Yang baru dibanding soal 13:
+   * `Alias /eternal /var/www/eternal`: URL `/eternal` mengambil file dari folder itu. Ditulis tanpa garis miring di belakang supaya `/eternal` dan `/eternal/` sama-sama cocok.
+   * `ProxyPass /eternal !`: tanda `!` artinya "jangan diproxy". Baris ini **harus ditulis sebelum** `ProxyPass "/"`, karena Apache memakai aturan pertama yang cocok.
+   * `RewriteCond %{REQUEST_URI} !^/eternal`: redirect 301 soal 13 tidak berlaku untuk `/eternal`. Path lain tetap di-redirect.
+
+6. Terapkan konfigurasi
+   ```
+   apache2ctl configtest
+   apache2ctl graceful
+   ```
+   `configtest` harus menampilkan `Syntax OK` sebelum `graceful`.
+
+7. Pengujian di penny
+   ```
+   curl -i -H "Host: www.k59.com" http://127.0.0.1/eternal/
+   curl -I -H "Host: penny.k59.com" http://127.0.0.1/eternal/
+   curl -I -H "Host: penny.k59.com" http://127.0.0.1/
+   ```
+   Target:
+   * Dua tes pertama: `HTTP/1.1 200 OK` dengan isi `<h1>Eternal</h1>` dan `<p>PHP rendering berhasil.</p>`.
+   * Tes ketiga: `HTTP/1.1 301 Moved Permanently` ke `www.k59.com`, menandakan redirect soal 13 tidak rusak.
+
+   Kalau yang muncul di browser atau curl adalah teks `<?php echo ... ?>`, berarti PHP belum dirender. Cek `ls -l /run/php/php8.4-fpm.sock` dan `a2query -c eternal-php`.
+
+   Dari alpha:
+   ```
+   curl http://www.k59.com/eternal/
+   ```
+
+   <br><img width="501" height="28" alt="image" src="https://github.com/user-attachments/assets/796df889-1228-4faa-97b9-cd60ee1f6fee" /><br>
+
+---
+
+## Bagian 2: Abbey (`/orion`, Nginx static)
+
+### Langkah pengerjaan
+1. Buat folder dan halaman statis
+   ```
+   mkdir -p /var/www/orion
+   cat > /var/www/orion/index.html <<'EOF'
+   <!DOCTYPE html>
+   <html>
+   <head><title>Orion</title></head>
+   <body>
+       <h1>Orion</h1>
+       <p>Static content berhasil.</p>
+   </body>
+   </html>
+   EOF
+   ```
+
+2. Tulis ulang config Nginx dengan `location /orion/`
+   Blok `/orion` ditaruh di **kedua** server block (`static.k59.com` dan `abbey.k59.com`), supaya bisa diakses dari kedua nama:
+   ```
+   cat > /etc/nginx/sites-available/abbey-proxy <<'EOF'
+   upstream core_backend {
+       server 10.93.3.6;
+       server 10.93.3.7;
+   }
+
+   server {
+       listen 80;
+       server_name static.k59.com;
+
+       location = /orion { return 301 /orion/; }
+       location /orion/ {
+           root /var/www;
+           index index.html;
+       }
+       location ~* ^/orion/.*\.php$ { return 403; }
+
+       location / {
+           proxy_pass http://core_backend;
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+       }
+   }
+
+   server {
+       listen 80;
+       server_name abbey.k59.com 10.93.2.2;
+
+       location = /orion { return 301 /orion/; }
+       location /orion/ {
+           root /var/www;
+           index index.html;
+       }
+       location ~* ^/orion/.*\.php$ { return 403; }
+
+       location / {
+           return 302 http://static.k59.com$request_uri;
+       }
+   }
+   EOF
+   ```
+   | Baris | Fungsinya |
+   | --- | --- |
+   | `location = /orion { return 301 /orion/; }` | `/orion` tanpa garis miring diarahkan ke `/orion/` |
+   | `location /orion/ { ... }` | Semua URL berawalan `/orion/` masuk ke blok ini |
+   | `root /var/www;` | Nginx menyambung `root` + URL, jadi `/orion/index.html` dibaca dari `/var/www/orion/index.html` |
+   | `index index.html;` | File default kalau yang dibuka folder |
+   | `location ~* ^/orion/.*\.php$ { return 403; }` | File `.php` di orion ditolak, jadi benar-benar static only |
+
+   Nginx memilih `location` dengan awalan terpanjang, jadi `/orion/` menang atas `/`. Redirect 302 soal 13 tetap berjalan untuk path lain.
+
+3. Cek config, lalu pastikan Nginx hidup
+   ```
+   nginx -t
+   service nginx start
+   ss -lntup | grep ':80'
+   ```
+   Harus ada baris `0.0.0.0:80` dengan nama `nginx`. Kalau Nginx sudah hidup dan hanya perlu membaca config baru, pakai `service nginx reload`.
+
+   > **Error 1 (Nginx belum menyala):** saat tes pertama di abbey:
+   > ```
+   > root@abbey:~# curl -i -H "Host: abbey.k59.com" http://127.0.0.1/orion/
+   > curl: (7) Failed to connect to 127.0.0.1 port 80 after 0 ms: Could not connect to server
+   > ```
+   > **Penyebab:** Nginx belum berjalan, jadi tidak ada proses yang mendengarkan di port 80. Pesan `connection refused` (gagal dalam 0 ms) menandakan koneksi ditolak langsung. Kalau masalahnya path atau file, jawabannya `404`. Kalau firewall, curl biasanya menggantung sampai timeout. `service nginx reload` hanya membuat Nginx yang **sudah hidup** membaca config baru, bukan menyalakannya.  
+   > **Perbaikan:**
+   > ```
+   > nginx -t
+   > service nginx start
+   > ss -lntup | grep ':80'
+   > ```
+   > Kalau `service` tidak mau menyalakan, jalankan langsung dengan `nginx`. Kalau masih gagal, lihat `tail -n 20 /var/log/nginx/error.log`. Penyebab umumnya `Address already in use` (matikan dengan `pkill nginx`, lalu `nginx` lagi) atau error di config yang ditunjuk oleh `nginx -t`.
+
+4. Pengujian di abbey
+   ```
+   curl -i -H "Host: abbey.k59.com" http://127.0.0.1/orion/
+   curl -i -H "Host: static.k59.com" http://127.0.0.1/orion/
+   ```
+   Target: `HTTP/1.1 200 OK` dengan isi `<h1>Orion</h1>`.
+
+   Buktikan juga bahwa PHP benar-benar tidak jalan:
+   ```
+   echo '<?php echo "x"; ?>' > /var/www/orion/tes.php
+   curl -I -H "Host: static.k59.com" http://127.0.0.1/orion/tes.php
+   rm /var/www/orion/tes.php
+   ```
+   Target: `HTTP/1.1 403 Forbidden`.
+
+   Dari alpha:
+   ```
+   curl http://static.k59.com/orion/
+   ```
+
+   Direktori rendering  
+   <br><img width="1600" height="900" alt="image" src="https://github.com/user-attachments/assets/cecd3800-be9a-4dcb-930f-219be24e87c1" /><br>
+   Path dapat eksekusi file php di direktori yang /eternal
+   <br><img width="1600" height="900" alt="image" src="https://github.com/user-attachments/assets/b47248e7-cfa9-4424-810b-23efb5f0dab9" /><br>
+   Akses file PHP dari node lain  
+   <br><img width="1600" height="900" alt="image" src="https://github.com/user-attachments/assets/2cf07685-de67-4e8d-bdcd-7b3816e5e874" /><br>
+   Buat jalur /orion yang menyajikan directory /var/www/orion, secara murni statis tanpa perlu rendering PHP.
+   <br><img width="1600" height="900" alt="image" src="https://github.com/user-attachments/assets/6c5268ac-7dd6-46f5-839a-81b915abf9ea" /><br>
+   Isi dari web statisnya
+   <br><img width="1600" height="900" alt="image" src="https://github.com/user-attachments/assets/09dcacc9-03e0-431d-babd-daa37b31006a" /><br>
+   Testing eksekusi web statis sesuai jalur yang dibuat
+   <br><img width="1600" height="900" alt="image" src="https://github.com/user-attachments/assets/c1f452f4-814f-4f56-a7fc-9059350acc91" /><br>
+   
+---
+
+## Backup & autostart
+Simpan perintah di script supaya mudah diulang kalau node di-restart: `/root/soal15.sh` di penny (langkah 1 sampai 6) dan di abbey (langkah 1 sampai 3). Supaya layanan menyala otomatis saat boot, tambahkan di network config masing-masing node, di bawah baris `up` yang sudah ada:
+
+Penny:
+```
+up /usr/sbin/service php8.4-fpm start || true
+```
+Abbey:
+```
+up /usr/sbin/service nginx start || true
+```
+
+## Rangkuman error & perbaikan
+| No | Gejala | Penyebab | Perbaikan |
+| --- | --- | --- | --- |
+| 1 | `curl: (7) Failed to connect to 127.0.0.1 port 80` di abbey | Nginx belum berjalan, tidak ada yang mendengarkan di port 80 | `nginx -t`, `service nginx start`, cek `ss -lntup \| grep ':80'` |
+| 2 | (Temuan saat review config, belum diuji) vhost terpisah `eternal.conf` dengan `ServerName penny.k59.com` | Apache membaca file `sites-enabled` urut abjad, sehingga `eternal.conf` dibaca sebelum `penny-proxy.conf` dan bisa menimpa vhost proxy, termasuk redirect 301 soal 13 | `a2dissite eternal.conf`, lalu pindahkan `Alias /eternal` dan `ProxyPass /eternal !` ke dalam `penny-proxy.conf` |
+| 3 | (Pencegahan) `/eternal` bisa terproxy ke vault dan menghasilkan 404 | `ProxyPass "/"` menangkap semua path, termasuk `/eternal` | Tulis `ProxyPass /eternal !` **sebelum** `ProxyPass "/"` |
+
+## Pelajaran
+* `connection refused` artinya tidak ada layanan yang mendengarkan di port itu. Periksa dulu apakah layanannya hidup (`ss -lntup`) sebelum menyalahkan config path.
+* `reload` hanya untuk layanan yang sudah hidup. Kalau layanan mati, gunakan `start`.
+* Pada reverse proxy, path yang ingin dilayani sendiri harus dikecualikan dari aturan proxy (`ProxyPass ... !` di Apache, `location` yang lebih spesifik di Nginx).
+* Satu domain sebaiknya dilayani oleh satu vhost. Dua vhost dengan `ServerName` yang sama akan saling bertabrakan.
+
+---
+
+## Soal 17 (Revisi)
+### Perintah soal
+* Tambahkan **TXT record** pada DNS untuk semua klien sayap kiri dan sayap kanan (alpha, beta, gamma, delta, epsilon).
+* Jika DNS di-query TXT terhadap nama domain mereka (contoh: `alpha.k59.com`), sistem harus mengembalikan teks berupa nama hostname mereka masing-masing (contoh: `"alpha"`).
+
+### Konsep singkat
+Kita sudah kenal **A record** (nama → IP). **TXT record** adalah catatan teks bebas yang ditempelkan ke sebuah nama. Isinya bukan IP dan bukan nama lain, hanya tulisan. Di buku telepon DNS, alpha sudah punya baris "alpha → 10.93.1.2". Sekarang kita tambah baris kedua untuk nama yang sama: "alpha → tulisan `alpha`". Satu nama boleh punya beberapa jenis record sekaligus, jadi record lama tidak diubah.
+
+Alur kerjanya:
+| Peran | Node | Tugas |
+| --- | --- | --- |
+| Master | prab (`10.93.3.2`) | Satu-satunya tempat zona boleh diedit |
+| Slave | tedd (`10.93.3.3`) | Menyalin zona dari prab, **tidak boleh diedit manual** |
+
+Tedd hanya menyalin kalau **nomor serial SOA naik**. Urutannya selalu: edit di prab → naikkan serial → reload → cek tedd.
+
+> **PENTING:** langkah 1 sampai 5 dikerjakan di **prab**, langkah 6 di **tedd**, langkah 7 dan 8 untuk verifikasi. Cek prompt (`root@prab` atau `root@tedd`) sebelum mengetik.
+
+### Langkah pengerjaan
+1. Di prab, cek serial SOA sekarang dan record klien yang sudah ada
+   ```
+   grep -A1 'SOA' /etc/bind/k59/k59.com
+   grep -E '^(alpha|beta|gamma|delta|epsilon)' /etc/bind/k59/k59.com
+   ```
+   Catat angka serialnya. Kelima klien harus muncul sebagai A record.
+
+2. Naikkan serial SOA
+   ```
+   nano /etc/bind/k59/k59.com
+   ```
+   Naikkan angka serial satu tingkat (format `TahunBulanTanggalNomor`, misalnya `2026100101` menjadi `2026100102`). Tanpa kenaikan ini, tedd menganggap zonanya masih versi terbaru dan tidak menyalin.
+
+3. Tambahkan TXT record di bagian bawah file zona
+   ```
+   cat >> /etc/bind/k59/k59.com <<'EOF'
+
+   ; --- SOAL 17: TXT record klien ---
+   alpha   IN      TXT     "alpha"
+   beta    IN      TXT     "beta"
+   gamma   IN      TXT     "gamma"
+   delta   IN      TXT     "delta"
+   epsilon IN      TXT     "epsilon"
+   EOF
+   ```
+   * `>>` artinya **menambah** di akhir file. Kalau memakai `>`, seluruh isi zona (SOA, NS, A, CNAME) terhapus.
+   * Tanda kutip `"..."` wajib untuk isi TXT. Itu penanda bahwa isinya teks.
+   * Nama di kolom pertama (`alpha`) tanpa titik, jadi BIND menyambungnya otomatis menjadi `alpha.k59.com.`
+   * Baris `EOF` harus **rata kiri** (tanpa spasi di depan), kalau tidak heredoc tidak berhenti.
+
+4. Cek zona dan reload
+   ```
+   named-checkzone k59.com /etc/bind/k59/k59.com
+   rndc reload
+   ```
+   Target: `loaded serial ...` dan `OK`. Kalau error, pesannya menunjuk nomor baris yang salah.
+
+5. Tes di prab (master)
+   ```
+   for host in alpha beta gamma delta epsilon; do
+       echo -n "$host: "
+       dig @10.93.3.2 "$host.k59.com" TXT +short
+   done
+   ```
+   Target:
+   ```
+   alpha: "alpha"
+   beta: "beta"
+   gamma: "gamma"
+   delta: "delta"
+   epsilon: "epsilon"
+   ```
+   <br><img width="546" height="158" alt="image" src="https://github.com/user-attachments/assets/20901953-00b0-4d12-9e03-7a5dd55422f4" /><br>
+
+6. Pastikan tedd (slave) menyalin zona
+   Di tedd, bandingkan serial prab dan tedd:
+   ```
+   dig @10.93.3.2 k59.com SOA +short
+   dig @10.93.3.3 k59.com SOA +short
+   ```
+   Keduanya harus menampilkan serial yang sama. Kalau serial tedd kosong atau salah, lihat bagian error di bawah.
+
+   > **Error 1 (BIND di tedd belum terpasang atau belum hidup):**
+   > ```
+   > root@tedd:~# dig @10.93.3.2 k59.com SOA +short
+   > prab.k59.com. root.k59.com. 2026100101 604800 86400 2419200 604800
+   > root@tedd:~# dig @10.93.3.3 k59.com SOA +short
+   > ;; communications error to 10.93.3.3#53: connection refused
+   > ;; no servers could be reached
+   > root@tedd:~# rndc retransfer k59.com
+   > bash: rndc: command not found
+   > ```
+   > **Penyebab:** DNS memakai port 53. `connection refused` artinya tidak ada layanan DNS yang mendengarkan di port itu di tedd. Petunjuk kedua adalah `rndc: command not found`. `rndc` ikut terinstal bersama paket BIND, jadi kalau `rndc` tidak ada, berarti BIND di tedd belum terpasang. Prab sehat (menjawab dengan serial `2026100101`), dan firewall bukan penyebab karena firewall biasanya membuat `dig` menggantung (timeout), bukan ditolak langsung.  
+   > **Perbaikan (di tedd):**
+   > ```
+   > which named
+   > ls -l /etc/init.d/ | grep -E 'bind|named'
+   > apt-get update
+   > DEBIAN_FRONTEND=noninteractive apt-get install -y bind9 bind9-utils dnsutils
+   > ```
+   > `bind9` adalah servernya, `bind9-utils` berisi `rndc` dan `named-checkconf`, dan `dnsutils` berisi `dig`.
+
+   Setelah BIND terpasang, pasang konfigurasi slave. Pakai `nano` supaya aman dari masalah indentasi heredoc:
+   ```
+   nano /etc/bind/named.conf.options
+   ```
+   Isi dengan blok `options` saja:
+   ```
+   options {
+       directory "/var/cache/bind";
+       forwarders { 192.168.122.1; };
+       dnssec-validation no;
+       allow-query { any; };
+       allow-recursion { any; };
+       auth-nxdomain no;
+       listen-on-v6 { any; };
+   };
+   ```
+   ```
+   nano /etc/bind/named.conf.local
+   ```
+   Isi dengan empat blok zona slave (zona utama dan tiga reverse zone dari soal 8):
+   ```
+   zone "k59.com" {
+       type slave;
+       masters { 10.93.3.2; };
+       file "/var/lib/bind/k59.com";
+   };
+
+   zone "2.93.10.in-addr.arpa" {
+       type slave;
+       masters { 10.93.3.2; };
+       file "/var/lib/bind/rev.2";
+   };
+
+   zone "3.93.10.in-addr.arpa" {
+       type slave;
+       masters { 10.93.3.2; };
+       file "/var/lib/bind/rev.3";
+   };
+
+   zone "4.93.10.in-addr.arpa" {
+       type slave;
+       masters { 10.93.3.2; };
+       file "/var/lib/bind/rev.4";
+   };
+   ```
+   Blok `type slave` berarti tedd tidak punya file zona sendiri, dia menyalin dari `masters` (prab).
+
+   > **Error 2 (zona terdefinisi dua kali):** saat `named-checkconf` dijalankan:
+   > ```
+   > root@tedd:~# named-checkconf
+   > /etc/bind/named.conf.local:1: zone 'k59.com': already exists previous definition: /etc/bind/named.conf.options:11
+   > /etc/bind/named.conf.local:4: writeable file '/var/lib/bind/k59.com': already in use: /etc/bind/named.conf.options:14
+   > ... (diulang untuk tiga reverse zone)
+   > ```
+   > **Penyebab:** BIND menggabungkan beberapa file config, dan satu zona hanya boleh didefinisikan **sekali**. Pesan error menunjuk definisi pertama di `named.conf.options` baris 11 sampai 32, padahal file itu seharusnya hanya berisi blok `options` (sekitar 9 baris). Artinya blok zona ikut tertulis ke file `options`, dan juga ada di `named.conf.local`. Dugaan paling kuat: saat dua perintah `cat > ... <<'EOF'` dipaste sekaligus, `EOF` pertama tidak dikenali (misalnya karena menjorok akibat copy dari README), sehingga isi perintah berikutnya ikut tertulis ke file pertama. Dugaan ini belum diperiksa dengan `cat` pada kedua file.  
+   > **Perbaikan:**
+   > ```
+   > cat /etc/bind/named.conf.options
+   > cat /etc/bind/named.conf.local
+   > ```
+   > Buang blok `zone` dari `named.conf.options` sehingga isinya hanya blok `options { ... };` seperti di atas. Pastikan `grep -c '^zone' /etc/bind/named.conf.local` menghasilkan `4`. Lalu cek:
+   > ```
+   > named-checkconf
+   > ```
+   > **Tidak ada output = sukses.** Pada BIND, diam berarti beres. Perhatikan juga nama file di depan nomor baris pada pesan error (`named.conf.options` atau `named.conf.local`), karena itu menunjuk file yang bermasalah.
+
+   Setelah `named-checkconf` bersih, nyalakan BIND:
+   ```
+   service named start
+   service named status
+   ss -lntup | grep ':53'
+   sleep 3
+   ls -l /var/lib/bind/
+   ```
+   Target: `bind is running`, port 53 mendengarkan, dan file `k59.com`, `rev.2`, `rev.3`, `rev.4` muncul di `/var/lib/bind/` (bukti transfer dari prab berhasil). Kalau `service` tidak mau, jalankan langsung dengan `/usr/sbin/named -u bind`.
+
+7. Verifikasi TXT di tedd
+   ```
+   dig @10.93.3.2 k59.com SOA +short
+   dig @10.93.3.3 k59.com SOA +short
+
+   for host in alpha beta gamma delta epsilon; do
+       echo -n "$host: "
+       dig @10.93.3.3 "$host.k59.com" TXT +short
+   done
+   ```
+   Target: dua baris SOA memiliki serial yang sama, dan kelima TXT muncul seperti di prab.
+
+   Kalau SOA tedd tertinggal atau TXT kosong, paksa tedd menyalin ulang (sekarang `rndc` sudah ada):
+   ```
+   rndc retransfer k59.com
+   ```
+
+8. Verifikasi dari klien (misal alpha dan delta)
+   ```
+   dig alpha.k59.com TXT +short
+   dig epsilon.k59.com TXT +short
+   ```
+   Target: `"alpha"` dan `"epsilon"`. Ini membuktikan hasilnya benar dari sisi pengguna, tidak hanya dari server DNS.
+
+   Query TXT di prab & tedd  
+   <br><img width="1600" height="900" alt="image" src="https://github.com/user-attachments/assets/bb5d5fdd-5d72-491f-ac53-9acd20e2b626" /><br>
+   <br><img width="1600" height="900" alt="image" src="https://github.com/user-attachments/assets/e2d90d93-70aa-4b2e-82ec-4a761bd35ebb" /><br>
+   
+   Soal 17 selesai.
+
+### Rangkuman error & perbaikan
+| No | Gejala | Penyebab | Perbaikan |
+| --- | --- | --- | --- |
+| 1 | `dig @10.93.3.3`: `connection refused`, dan `rndc: command not found` di tedd | BIND di tedd belum terpasang atau belum hidup, tidak ada layanan di port 53 | Install `bind9 bind9-utils dnsutils`, pasang config slave, `service named start`, cek `ss -lntup \| grep ':53'` |
+| 2 | `named-checkconf`: `zone ... already exists previous definition` dan `writeable file ... already in use` | Blok zona ada di dua file (`named.conf.options` dan `named.conf.local`). Dugaan: heredoc `EOF` tidak dikenali saat paste | Rapikan `named.conf.options` agar hanya berisi blok `options`, lalu `named-checkconf` sampai tidak ada output |
+
+### Pencegahan
+| Kesalahan yang mungkin | Akibat |
+| --- | --- |
+| Lupa menaikkan serial SOA | `dig @10.93.3.2` benar, tetapi `dig @10.93.3.3` kosong karena tedd tidak menyalin |
+| Memakai `>` bukan `>>` saat menambah TXT | Seluruh isi zona terhapus dan DNS rusak |
+| Menulis isi TXT tanpa tanda kutip | BIND membaca kata sebagai token terpisah dan bisa error |
+| Mengedit zona langsung di tedd | Editan hilang karena ditimpa saat tedd menyalin dari prab |
+| Menimpa `named.conf.local` di prab hanya dengan zona `k59.com` (misalnya saat troubleshoot soal 12) | Reverse zone soal 8 bisa hilang. Cek dengan `cat /etc/bind/named.conf.local` (belum diperiksa) |
+
+### Pelajaran
+* `connection refused` pada `dig` artinya tidak ada layanan DNS yang mendengarkan di port 53. Periksa dulu apakah BIND terpasang dan hidup sebelum mencurigai isi zona.
+* Kalau `rndc` tidak ditemukan, itu tanda paket BIND belum terpasang di node tersebut.
+* Urutan aman menulis config BIND: **tulis → `named-checkconf` → baru start**. Kalau `named-checkconf` diam, lanjut.
+* Zona hanya boleh didefinisikan sekali. Zona milik `named.conf.local`, dan `named.conf.options` hanya untuk blok `options`.
+* Simpan langkah tedd sebagai script `/root/soal17-tedd.sh` dan pastikan network config tedd punya baris `up /usr/sbin/service named start || true`, karena BIND di tedd beberapa kali kembali kosong di soal 4, 17, dan sebelumnya.
