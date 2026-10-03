@@ -592,11 +592,11 @@ Tambahkan semua A record di prab. Tentukan dulu satu dari lima IP router untuk r
     ```
     #!/bin/bash
     cat > /etc/bind/k59/k59.com <<'EOF'
-    $TTL    604800
+    $TTL    43200
     @       IN      SOA     prab.k59.com. root.k59.com. (
                             2026092802 ; Serial
-                            604800     ; Refresh
-                            86400      ; Retry
+                            43200      ; Refresh
+                            3600       ; Retry
                             2419200    ; Expire
                             604800 )   ; Negative Cache TTL
     ;
@@ -666,7 +666,7 @@ Tambahkan semua A record di prab. Tentukan dulu satu dari lima IP router untuk r
       | epsilon | `epsilon` | `10.93.5.3` |
    Jalankan di tiap node..
    ```
-   sh /root/soal5-hostname.sh
+   bash /root/soal5-hostname.sh
    ```
 4. Di network config setiap node, tambahkan satu baris up di bawah baris-baris up yang sudah ada:
    ```
@@ -681,9 +681,14 @@ Tambahkan semua A record di prab. Tentukan dulu satu dari lima IP router untuk r
     grep "$(hostname)" /etc/hosts
     ping -c 1 "$(hostname)"
    ```
+   * `hostname` buat pembuktian sistem mengenali diri sendiri
+   * `cat /etc/hostname` buat buktiin nama hostname udah disimpen di node bersangkutan
+   * `grep "$(hostname)" /etc/hosts` nama hostname udah dipetakan belom IP nya
+   * `ping` IP nya bisa dihubungi nggak
+     
    Cek semua domain sekaligus
    ```
-   for n in rootkit alpha beta gamma delta epsilon prab tedd abbey penny obladi desmond oblada molly; do echo "$n.k59.com -> $(dig +short $n.k59.com)" done
+   for n in rootkit alpha beta gamma delta epsilon prab tedd abbey penny obladi desmond oblada molly; do echo "$n.k59.com -> $(dig +short $n.k59.com)"; done
    ```
    <br><img width="629" height="325" alt="image" src="https://github.com/user-attachments/assets/9a1f2704-57c6-477a-b95b-1bdfc1211405" /><br>
    Hasil loop dari abbey sempurna: ke-12 domain mengarah ke IP yang benar sesuai tabel. Karena abbey ada di subnet 10.93.2.x, ini juga sudah jadi bukti dari "klien kedua" selain alpha. Soal cat yang gagal: itu karena menjalankannya di abbey. File zona hanya ada di prab, sang pemilik buku telepon. abbey cuma "penanya", jadi dia memang tidak punya file itu. Jalankan di console prab:
@@ -1335,7 +1340,7 @@ Hasil: Beranda menampilkan teks sambutan, dan /profil berhasil memuat halaman pr
    ```
    apache2ctl graceful
    ```
-   Lakukan hal yang sama di desmond yeah
+   Lakukan hal yang sama di desmond yeah  
    Now back to Penny
    ```
    curl -s --resolve www.k59.com:80:10.93.4.2 http://www.k59.com
@@ -1360,6 +1365,7 @@ Hasil: Beranda menampilkan teks sambutan, dan /profil berhasil memuat halaman pr
     Jadikan konfigurasi ini sebagai default, yang 000-vault-log.conf di-disable dulu
    ```
    a2dissite 000-vault-log.conf
+   a2ensite 000-default.conf
    ```
    Backup config default lama
    ```
@@ -1394,7 +1400,7 @@ Hasil: Beranda menampilkan teks sambutan, dan /profil berhasil memuat halaman pr
    <br><img width="292" height="48" alt="image" src="https://github.com/user-attachments/assets/566dfe3c-4cdf-448c-a3e1-410d4f04c3e4" /><br>  
    Lalu cek lagi dari obladi
    ```
-   tail -n 5 /var/log/apache2/proxy_test.log`
+   tail -n 5 /var/log/apache2/proxy_test.log
    ```
    <br><img width="497" height="123" alt="image" src="https://github.com/user-attachments/assets/5ced266e-be1d-4223-8884-8812d2a6ab33" /><br>
 
