@@ -3147,3 +3147,186 @@ Tedd hanya menyalin kalau **nomor serial SOA naik**. Urutannya selalu: edit di p
 * Urutan aman menulis config BIND: **tulis → `named-checkconf` → baru start**. Kalau `named-checkconf` diam, lanjut.
 * Zona hanya boleh didefinisikan sekali. Zona milik `named.conf.local`, dan `named.conf.options` hanya untuk blok `options`.
 * Simpan langkah tedd sebagai script `/root/soal17-tedd.sh` dan pastikan network config tedd punya baris `up /usr/sbin/service named start || true`, karena BIND di tedd beberapa kali kembali kosong di soal 4, 17, dan sebelumnya.
+
+## Soal 18 (Revisi)(belum berhasil)
+### Perintah soal
+
+1. Membuktikan mekanisme DNS caching berdasarkan nilai Time To Live (TTL) sebesar 15 detik.
+2. Mengambil tangkapan layar (screenshot) pada 3 fase: saat IP asli masuk cache, saat cache menahan perubahan IP (< 15 detik), dan saat cache kedaluwarsa lalu menampilkan IP baru (> 15 detik).
+
+### Konsep & Pembahasan
+Secara bawaan, Alpine Linux di klien (alpha) tidak punya memori cache mandiri. Kalau kita cuma pakai perintah dig, pencariannya akan langsung tembus terus ke server Authoritative (prab) sehingga cache TTL diabaikan. Biar simulasi ini berhasil, kita harus memasang dnsmasq di alpha sebagai local resolver (perantara cache).
+
+### Langkah pengerjaan
+
+**1. Siapkan local resolver di klien. Di console alpha, jalankan:**
+
+```Bash
+apk update
+apk add dnsmasq
+pkill dnsmasq
+dnsmasq --server=10.93.3.2
+echo "nameserver 127.0.0.1" > /etc/resolv.conf
+```
+Notes: Kalau pas jalanin dnsmasq muncul error inotify: No file descriptors available, itu karena OS di alpha kehabisan memori internal akibat sering buka-tutup service. Troubleshoot: Langsung klik kanan node alpha di GNS3 -> Stop -> Start, lalu ulangi perintah di atas.
+
+**2. Pengujian 3 Fase TTL:**
+Fase 1 (Pancingan awal):
+Pastikan di prab (file /etc/bind/k59/k59.com) A record abbey diset dengan TTL 15 ke IP asli:
+
+```bash
+abbey   15      IN      A       10.93.2.2
+```
+Jalankan rndc reload di prab. Lalu di alpha jalankan:
+
+```Bash
+dig abbey.k59.com +short
+```
+Target output: 10.93.2.2 (Sekarang IP ini resmi masuk cache alpha).
+
+**3. Fase 2 (Momen emas < 15 detik):**
+Buka console prab, ganti IP abbey jadi 10.93.2.3 (IP fiktif), naikkan serial SOA, lalu ketik rndc reload.
+Cepat kembali ke console alpha sebelum 15 detiknya habis, lalu jalankan lagi:
+
+```Bash
+dig abbey.k59.com +short
+```
+Target output: 10.93.2.2 (Ini bukti cache menahan query meskipun IP di server sudah diganti. Screenshot bagian ini!).
+
+**4. Fase 3 (Cache kedaluwarsa > 15 detik):**
+Tunggu santai sekitar 20 detik di alpha, lalu jalankan query yang sama.
+
+```Bash
+dig abbey.k59.com +short
+```
+Target output: 10.93.2.3 (Sistem mendeteksi cache hangus, lalu menarik IP terbaru dari prab).
+
+### Dokumentasi bahwa belum berhasil
+
+<img width="1600" height="999" alt="image" src="https://github.com/user-attachments/assets/6c2cd07e-f433-40d6-94b7-3c37ece5b444" />
+
+## Soal 19
+### Perintah soal
+
+1. Buat CNAME record outbound.k59.com yang mengarah ke domain eksternal http.badssl.com.
+2. Lakukan curl ke [http://outbound.k59.com](http://outbound.k59.com) dan pastikan hasil HTML-nya sesuai dengan web aslinya (bukan halaman default Welcome to nginx!).
+
+### Konsep & Pembahasan
+Ada dua tantangan di soal ini:
+
+1. Server DNS (prab) harus punya akses meresolusi domain publik di internet (forwarders).
+2. Kalau kita cuma asal curl [http://outbound.k59.com](http://outbound.k59.com), Virtual Host di server BadSSL tidak kenal dengan nama "outbound.k59.com", sehingga request kita dilempar ke halaman default Nginx. Solusinya, kita harus manipulasi Host Header di HTTP request-nya menggunakan parameter -H pada curl.
+
+### Langkah pengerjaan
+
+**1, Tambahkan CNAME record di Master (prab). Buka file zona /etc/bind/k59/k59.com, tambahkan di baris bawah:**
+
+```bash
+outbound    IN      CNAME   http.badssl.com.
+```
+Penting: Jangan lupa tanda titik (trailing dot) di belakang .com., kalau nggak BIND bakal menganggapnya domain relatif. Naikkan serial SOA lalu simpan.
+
+**2. Aktifkan Forwarders ke internet. Buka nano /etc/bind/named.conf.options, pastikan ada blok ini di dalam options:**
+
+```bash
+options {
+    directory "/var/cache/bind";
+    recursion yes;
+    allow-query { any; };
+    forwarders {
+        192.168.122.1;
+        8.8.8.8;
+    };
+    forward only;
+    dnssec-validation no;
+    listen-on-v6 { any; };
+};
+```
+**3. Restart DNS server di prab:**
+
+```bash
+pkill -9 named && named
+```
+**4. Verifikasi DNS dan eksekusi HTTP Header di alpha. Kembalikan resolver ke server utama lalu cek CNAME-nya:**
+
+```Bash
+echo "nameserver 10.93.3.2" > /etc/resolv.conf
+dig outbound.k59.com
+```
+Target di bagian ANSWER SECTION harus muncul IP publik dari badssl (misal: 104.154.89.105). Kalau IP sudah muncul, jalankan pemungkasnya:
+
+```Bash
+curl -H "Host: http.badssl.com" http://outbound.k59.com
+```
+Target keluaran: Teks HTML asli (background warna merah/hijau dari badssl.com), bukan Welcome to nginx!.
+
+### dokumentasi
+
+<img width="1600" height="999" alt="image" src="https://github.com/user-attachments/assets/57fdb904-1e29-4347-9f6c-ad8501e85288" />
+
+## Soal 20
+### Perintah soal
+Setelah semua penyelesaian selesai, pastikan semua service dan konfigurasi yang telah dikerjakan dari awal tetap berjalan normal dan berstatus autostart saat node di-restart (khusus untuk kasus ini, abaikan konfigurasi nomor 18 dan biarkan koordinat kembali normal).
+
+### Konsep & Pembahasan
+Di environment GNS3 yang menggunakan image Alpine Linux (AlpiNet), pengaturan service yang sedang berjalan akan hangus jika node dimatikan. Agar service (seperti DNS, Web Server, NAT, dan PHP) memiliki status autostart, perintah penyalaan service harus disisipkan pada menu Network Configuration di masing-masing node menggunakan parameter up.
+
+Selain itu, efek caching resolver dari Soal 18 harus dibersihkan agar pengujian resolusi DNS kembali murni langsung ke server Authoritative.
+
+### Langkah pengerjaan
+
+**1. Abaikan (Reset) Konfigurasi Soal 18**
+Di klien alpha, matikan cache lokal agar kembali bertanya ke prab:
+
+```Bash
+pkill -9 dnsmasq
+echo "nameserver 10.93.3.2" > /etc/resolv.conf
+```
+**2. Di Master prab, buka file zona /etc/bind/k59/k59.com, hapus nilai TTL khusus pada record abbey, dan pastikan IP-nya kembali normal:**
+
+```bash
+abbey   IN      A       10.93.2.2
+```
+Naikkan serial SOA, lalu eksekusi rndc reload.
+
+**3. Konfigurasi Autostart Service di Seluruh Node**
+Klik kanan pada masing-masing node di GNS3 -> pilih Edit network configuration. Tambahkan baris perintah up di bagian paling bawah antarmuka (biasanya di bawah gateway).
+
+A. Node Router & DNS (Rootkit, Prab, Tedd)
+
+Rootkit: Pastikan script NAT tereksekusi saat boot.
+
+```bash
+up /bin/bash /root/soal2.sh || true
+up /bin/sh /root/soal5-hostname.sh || true
+```
+Prab & Tedd (BIND9):
+
+```bash
+up /usr/sbin/service named start || true
+```
+B. Node Web Server & Proxy (Apache & Nginx)
+
+Penny (Apache + PHP-FPM):
+
+```bash
+up /usr/sbin/service apache2 start || true
+up /usr/sbin/service php8.4-fpm start || true
+```
+Abbey (Nginx):
+
+```bash
+up /usr/sbin/service nginx start || true
+```
+Obladi & Desmond (Apache - Vault):
+
+```bash
+up /usr/sbin/service apache2 start || true
+```
+Oblada & Molly (Nginx + PHP-FPM - Core):
+
+```bash
+up /usr/sbin/service php8.4-fpm start || true
+up /usr/sbin/service nginx start || true
+```
+### dokumentasi testing
